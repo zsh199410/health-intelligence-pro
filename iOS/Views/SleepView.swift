@@ -89,26 +89,25 @@ struct SleepView: View {
 
     private var stateContent: some View {
         Group {
-            if health.isLoading && hasNoData {
+            if health.sleepReadState == .loading && hasNoData {
                 V3LoadingView()
             } else if health.hasRequestedAccess == false {
                 permissionCard
-            } else if hasNoData && health.failedMetricIDs.isEmpty {
+            } else if health.sleepReadState == .empty {
                 V3EmptyStateView(
                     title: "暂无睡眠记录",
                     detail: "佩戴手表睡眠后再刷新；检查健康授权和睡眠专注设置。",
                     symbol: "moon.zzz.fill"
                 )
-            } else if hasNoData {
+            } else if health.sleepReadState == .failed {
                 V3EmptyStateView(
                     title: "睡眠数据读取失败",
                     detail: "本次未能读取任何睡眠记录，请检查授权后下拉刷新重试。",
                     symbol: "exclamationmark.triangle.fill"
                 )
+            } else if health.sleepReadState == .notRequested {
+                V3EmptyStateView(title: "尚未读取睡眠记录", detail: "刷新以读取 Apple 健康中的睡眠数据。", symbol: "moon.zzz.fill")
             } else {
-                if health.failedMetricIDs.isEmpty == false {
-                    V3ErrorBanner(failedCount: health.failedMetricIDs.count)
-                }
                 if isStale {
                     V3StaleBanner(lastUpdated: health.lastRefreshedAt ?? .now)
                 }
@@ -241,7 +240,15 @@ struct SleepView: View {
         VStack(alignment: .leading, spacing: 8) {
             V3SectionHeadline(title: "睡眠规律", subtitle: "近 7 天就寝与起床时间")
             V3Card {
-                if let regularity {
+                if health.sleepRegularityFailed {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("睡眠规律读取失败", systemImage: "exclamationmark.triangle")
+                            .font(.subheadline.weight(.semibold))
+                        Text("本次无法读取近 7 天的睡眠规律，其他睡眠记录不受影响。请刷新重试。")
+                            .font(HealthTheme.v3BodyFont)
+                            .foregroundStyle(HealthTheme.v3Muted)
+                    }
+                } else if let regularity {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("就寝时间")

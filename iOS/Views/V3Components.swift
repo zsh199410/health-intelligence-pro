@@ -497,9 +497,6 @@ struct SleepStageTimeline: View {
          (.rem, HealthTheme.stageColor(.rem)), (.unspecified, HealthTheme.stageColor(.unspecified)),
          (.awake, HealthTheme.stageColor(.awake))]
     }
-    private var windowSeconds: TimeInterval {
-        max(1, window.upperBound.timeIntervalSince(window.lowerBound))
-    }
     private var timeFormatter: DateFormatter {
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
@@ -508,14 +505,25 @@ struct SleepStageTimeline: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             GeometryReader { geometry in
-                HStack(spacing: 2) {
-                    ForEach(segments, id: \.start) { segment in
-                        let width = max(2, (geometry.size.width - CGFloat(max(0, segments.count - 1)) * 2) * CGFloat(segment.end.timeIntervalSince(segment.start)) / CGFloat(windowSeconds))
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(HealthTheme.stageColor(segment.stage))
-                            .frame(width: width)
+                let runs = SleepTimelineLayout.runs(
+                    segments: segments, window: window, width: Double(geometry.size.width)
+                )
+                ZStack(alignment: .leading) {
+                    // Neutral track makes missing samples visibly unrecorded,
+                    // not awake. All runs share one absolute-time coordinate.
+                    Capsule()
+                        .fill(HealthTheme.v3Line.opacity(0.35))
+                    ForEach(Array(runs.enumerated()), id: \.offset) { item in
+                        if let stage = item.element.stage {
+                            Rectangle()
+                                .fill(HealthTheme.stageColor(stage))
+                                .frame(width: CGFloat(item.element.width))
+                                .offset(x: CGFloat(item.element.x))
+                        }
                     }
                 }
+                .frame(width: geometry.size.width, height: geometry.size.height)
+                .clipShape(Capsule())
             }
             .frame(height: 15)
             .accessibilityHidden(true)

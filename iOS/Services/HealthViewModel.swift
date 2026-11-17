@@ -6,6 +6,9 @@ import HealthCore
 final class HealthViewModel: ObservableObject {
     @Published private(set) var readings: [String: MetricReading] = [:]
     @Published private(set) var trends: [String: [TrendPoint]] = [:]
+    enum SleepReadState: Equatable { case notRequested, loading, loaded, empty, failed }
+    @Published private(set) var sleepReadState: SleepReadState = .notRequested
+    @Published private(set) var sleepRegularityFailed = false
     @Published private(set) var sleep: SleepSummary?
     /// Latest sleep session window, derived from the same intervals that
     /// produce `sleep`. Nil when there is no sleep record.
@@ -50,6 +53,8 @@ final class HealthViewModel: ObservableObject {
     func refresh() async {
         guard !isLoading, repository.isAvailable else { return }
         isLoading = true
+        sleepReadState = .loading
+        sleepRegularityFailed = false
         defer { isLoading = false }
         // Priority metrics first. Never substitute manufactured readings for missing records.
         let priority = ["heartRate", "restingHeartRate", "hrv", "oxygenSaturation", "respiratoryRate",
@@ -78,7 +83,13 @@ final class HealthViewModel: ObservableObject {
             sleep = intervals.isEmpty ? nil : SleepCalculator.summarize(intervals)
             sleepWindow = SleepSession.window(from: intervals)
             sleepIntervals = intervals
-            sleepSessions7d = (try? await repository.sleepSessions()) ?? []
+            sleepReadState = intervals.isEmpty ? .empty : .loaded
+            do {
+                sleepSessions7d = try await repository.sleepSessions()
+            } catch {
+                sleepSessions7d = []
+                sleepRegularityFailed = true
+            }
             var nights: [String: MetricReading] = [:]
             if let window = sleepWindow {
                 for id in nightIDs {
@@ -90,6 +101,8 @@ final class HealthViewModel: ObservableObject {
             }
             nightReadings = nights
         } catch {
+            sleepReadState = .failed
+            sleepRegularityFailed = false
             sleep = nil
             sleepWindow = nil
             sleepIntervals = []
