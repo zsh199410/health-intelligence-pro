@@ -131,6 +131,49 @@ final class HealthKitRepository {
         }
     }
 
+    /// Sleep session windows over the last `days` days, for sleep
+    /// regularity (bedtime / wake-time consistency). Same 2-hour gap
+    /// sessionization as `SleepSession.window`, but returns every
+    /// session, newest first. Empty when there is no sleep record.
+    func sleepSessions(days: Int = 7) async throws -> [ClosedRange<Date>] {
+        let since = Calendar.current.date(byAdding: .day, value: -days, to: Date())!
+        let predicate = HKQuery.predicateForSamples(withStart: since, end: .now)
+        let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis)!
+        let samples = try await sampleQuery(type: sleepType, predicate: predicate, limit: 1000)
+        let intervals = samples.compactMap { sample -> SleepInterval? in
+            guard let sample = sample as? HKCategorySample,
+                  let value = HKCategoryValueSleepAnalysis(rawValue: sample.value) else { return nil }
+            let stage: SleepStage
+            switch value {
+            case .asleepREM: stage = .rem
+            case .asleepCore: stage = .core
+            case .asleepDeep: stage = .deep
+            case .asleepUnspecified: stage = .unspecified
+            case .awake: stage = .awake
+            default: return nil // .inBed overlaps with actual stages
+            }
+            return SleepInterval(start: sample.startDate, end: sample.endDate, stage: stage)
+        }
+        let sorted = intervals.filter { $0.end > $0.start }.sorted { $0.start < $1.start }
+        guard !sorted.isEmpty else { return [] }
+        let maxGap: TimeInterval = 2 * 3600
+        var sessions: [ClosedRange<Date>] = []
+        var runStart = sorted[0].start
+        var runEnd = sorted[0].end
+        for interval in sorted.dropFirst() {
+            if interval.start.timeIntervalSince(runEnd) < maxGap {
+                runStart = min(runStart, interval.start)
+                runEnd = max(runEnd, interval.end)
+            } else {
+                sessions.append(runStart...runEnd)
+                runStart = interval.start
+                runEnd = interval.end
+            }
+        }
+        sessions.append(runStart...runEnd)
+        return sessions.reversed()
+    }
+
     func ecgSummaries() async throws -> [ECGSummary] {
         let samples = try await sampleQuery(type: HKObjectType.electrocardiogramType(),
                                             predicate: nil, limit: 20)

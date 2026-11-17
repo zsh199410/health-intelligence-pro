@@ -10,6 +10,12 @@ final class HealthViewModel: ObservableObject {
     /// Latest sleep session window, derived from the same intervals that
     /// produce `sleep`. Nil when there is no sleep record.
     @Published private(set) var sleepWindow: ClosedRange<Date>?
+    /// Raw sleep intervals behind `sleep` (last 36h), for the stage
+    /// timeline. Empty when there is no sleep record.
+    @Published private(set) var sleepIntervals: [SleepInterval] = []
+    /// Sleep session windows over the last 7 days, newest first, for
+    /// sleep regularity. Empty when there is no sleep record.
+    @Published private(set) var sleepSessions7d: [ClosedRange<Date>] = []
     /// Night vitals: latest sample of each night metric whose record falls
     /// inside `sleepWindow`. Never falls back to a daytime reading.
     @Published private(set) var nightReadings: [String: MetricReading] = [:]
@@ -66,11 +72,13 @@ final class HealthViewModel: ObservableObject {
         }
         readings = newReadings
         failedMetricIDs = failures
-        let nightIDs = ["oxygenSaturation", "respiratoryRate", "sleepingWristTemperature", "appleSleepingBreathingDisturbances"]
+        let nightIDs = ["heartRate", "hrv", "oxygenSaturation", "respiratoryRate", "sleepingWristTemperature", "appleSleepingBreathingDisturbances"]
         do {
             let intervals = try await repository.sleepIntervals()
             sleep = intervals.isEmpty ? nil : SleepCalculator.summarize(intervals)
             sleepWindow = SleepSession.window(from: intervals)
+            sleepIntervals = intervals
+            sleepSessions7d = (try? await repository.sleepSessions()) ?? []
             var nights: [String: MetricReading] = [:]
             if let window = sleepWindow {
                 for id in nightIDs {
@@ -84,6 +92,8 @@ final class HealthViewModel: ObservableObject {
         } catch {
             sleep = nil
             sleepWindow = nil
+            sleepIntervals = []
+            sleepSessions7d = []
             nightReadings = [:]
         }
         ecgs = (try? await repository.ecgSummaries()) ?? []

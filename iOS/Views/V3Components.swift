@@ -481,6 +481,68 @@ struct V3ErrorBanner: View {
     }
 }
 
+/// Sleep stage timeline: a horizontal bar of the latest sleep session,
+/// each segment colored by stage and sized by its duration, with bedtime
+/// and wake time on the axis and a per-stage minutes legend below.
+/// Segments come from `SleepCalculator.segments` (deduplicated, same
+/// precedence as the summary), so the bar and the legend always agree.
+/// Decorative bar only — the legend carries the same minutes as text,
+/// so VoiceOver skips the bar.
+struct SleepStageTimeline: View {
+    let segments: [SleepInterval]
+    let window: ClosedRange<Date>
+    let summary: SleepSummary
+    private var stages: [(SleepStage, Color)] {
+        [(.deep, HealthTheme.stageColor(.deep)), (.core, HealthTheme.stageColor(.core)),
+         (.rem, HealthTheme.stageColor(.rem)), (.unspecified, HealthTheme.stageColor(.unspecified)),
+         (.awake, HealthTheme.stageColor(.awake))]
+    }
+    private var windowSeconds: TimeInterval {
+        max(1, window.upperBound.timeIntervalSince(window.lowerBound))
+    }
+    private var timeFormatter: DateFormatter {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            GeometryReader { geometry in
+                HStack(spacing: 2) {
+                    ForEach(segments, id: \.start) { segment in
+                        let width = max(2, (geometry.size.width - CGFloat(max(0, segments.count - 1)) * 2) * CGFloat(segment.end.timeIntervalSince(segment.start)) / CGFloat(windowSeconds))
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(HealthTheme.stageColor(segment.stage))
+                            .frame(width: width)
+                    }
+                }
+            }
+            .frame(height: 15)
+            .accessibilityHidden(true)
+            HStack {
+                Text(timeFormatter.string(from: window.lowerBound))
+                Spacer()
+                Text(timeFormatter.string(from: window.upperBound))
+            }
+            .font(HealthTheme.v3AuxFont)
+            .foregroundStyle(HealthTheme.v3Muted)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("就寝 \(timeFormatter.string(from: window.lowerBound))，起床 \(timeFormatter.string(from: window.upperBound))")
+            ForEach(stages, id: \.0) { entry in
+                let stage = entry.0
+                let tint = entry.1
+                HStack {
+                    Circle().fill(tint).frame(width: 9, height: 9)
+                    Text(stage.rawValue).font(.subheadline).foregroundStyle(HealthTheme.v3Ink)
+                    Spacer()
+                    Text("\(summary.minutesByStage[stage] ?? 0) 分钟")
+                        .font(.subheadline.monospacedDigit()).foregroundStyle(HealthTheme.v3Muted)
+                }
+            }
+        }
+    }
+}
+
 /// Stale data: the last successful refresh is over 24 hours old.
 struct V3StaleBanner: View {
     let lastUpdated: Date
