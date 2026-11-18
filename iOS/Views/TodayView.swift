@@ -212,6 +212,13 @@ struct TodayView: View {
                         ModuleCardContent(module: module)
                     }
                     .buttonStyle(.plain)
+                } else if module.id == .stress {
+                    NavigationLink {
+                        StressView()
+                    } label: {
+                        ModuleCardContent(module: module)
+                    }
+                    .buttonStyle(.plain)
                 } else if let metricID = module.primaryMetricID, let metric = HealthCatalog.byID[metricID] {
                     NavigationLink {
                         MetricDetailView(metric: metric)

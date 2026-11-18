@@ -110,6 +110,25 @@ final class HealthKitRepository {
         }
     }
 
+    /// Raw samples of a metric over the last `hours` hours, oldest first.
+    /// Used by the stress page, which needs within-day (hourly) samples;
+    /// `trend` aggregates per day and cannot serve that. Values use the
+    /// metric unit and multiplier, non-finite values are dropped. Only
+    /// the newest `limit` samples are read; the result is re-sorted
+    /// ascending because `sampleQuery` returns newest first.
+    func samples(_ metric: HealthMetric, hours: Int, limit: Int = 500) async throws -> [TrendPoint] {
+        guard let start = Calendar.current.date(byAdding: .hour, value: -max(1, hours), to: Date()) else { return [] }
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: Date())
+        let raw = try await sampleQuery(type: metric.quantityType, predicate: predicate, limit: limit)
+        var result: [TrendPoint] = []
+        for case let sample as HKQuantitySample in raw {
+            let value = sample.quantity.doubleValue(for: metric.unit) * metric.multiplier
+            guard value.isFinite else { continue }
+            result.append(TrendPoint(recordedAt: sample.endDate, value: value))
+        }
+        return result.sorted { $0.recordedAt < $1.recordedAt }
+    }
+
     func sleepIntervals() async throws -> [SleepInterval] {
         let since = Calendar.current.date(byAdding: .hour, value: -36, to: Date())!
         let predicate = HKQuery.predicateForSamples(withStart: since, end: .now)
