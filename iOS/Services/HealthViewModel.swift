@@ -69,8 +69,12 @@ final class HealthViewModel: ObservableObject {
         let nightIDs = ["oxygenSaturation", "respiratoryRate", "sleepingWristTemperature", "appleSleepingBreathingDisturbances"]
         do {
             let intervals = try await repository.sleepIntervals()
-            sleep = intervals.isEmpty ? nil : SleepCalculator.summarize(intervals)
-            sleepWindow = SleepSession.window(from: intervals)
+            // The displayed total and the session window must use the same
+            // latest-session samples. Summarizing the whole 36-hour query
+            // mixes separate nights into one duration.
+            let latestSessionIntervals = SleepSession.latestIntervals(from: intervals)
+            sleep = latestSessionIntervals.isEmpty ? nil : SleepCalculator.summarize(latestSessionIntervals)
+            sleepWindow = SleepSession.window(from: latestSessionIntervals)
             var nights: [String: MetricReading] = [:]
             if let window = sleepWindow {
                 for id in nightIDs {

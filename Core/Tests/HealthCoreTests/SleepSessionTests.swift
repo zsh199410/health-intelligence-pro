@@ -50,6 +50,47 @@ final class SleepSessionTests: XCTestCase {
         XCTAssertEqual(window?.upperBound, intervals[0].end)
     }
 
+    func testOverlappingEarlierSampleCanEndAfterLastStartingSample() {
+        let longSource = interval(0, 8 * 3_600, stage: .core)
+        let shortSource = interval(7 * 3_600, 7 * 3_600 + 300, stage: .rem)
+        let window = SleepSession.window(from: [longSource, shortSource])
+        XCTAssertEqual(window, longSource.start...longSource.end)
+        XCTAssertEqual(SleepSession.latestIntervals(from: [longSource, shortSource]).count, 2)
+    }
+
+    func testLongSourceBridgesShortSamplesAcrossApparentGap() {
+        let longSource = interval(0, 10 * 3_600)
+        let middle = interval(1 * 3_600, 2 * 3_600)
+        let final = interval(9 * 3_600, 11 * 3_600)
+        let window = SleepSession.window(from: [longSource, middle, final])
+        XCTAssertEqual(window, longSource.start...final.end)
+    }
+
+    func testLatestIntervalsExcludePreviousNightFromDuration() {
+        let previous = interval(-100_000, -75_000, stage: .core)
+        let latest = interval(0, 6 * 3_600, stage: .deep)
+        let all = [previous, latest]
+        let selected = SleepSession.latestIntervals(from: all)
+        XCTAssertEqual(selected.count, 1)
+        XCTAssertEqual(selected.first?.start, latest.start)
+        XCTAssertEqual(SleepCalculator.summarize(selected).totalAsleepMinutes, 360)
+        XCTAssertEqual(SleepSession.window(from: all), latest.start...latest.end)
+    }
+
+    func testLatestIntervalsKeepOverlappingSourcesForDeduplication() {
+        let first = interval(0, 3_600, stage: .core)
+        let overlapping = interval(1_800, 3_600, stage: .core)
+        let selected = SleepSession.latestIntervals(from: [first, overlapping])
+        XCTAssertEqual(selected.count, 2)
+        XCTAssertEqual(SleepCalculator.summarize(selected).totalAsleepMinutes, 60)
+    }
+
+    func testLatestIntervalsRejectInvalidAndEmptyInputs() {
+        let invalid = interval(4_000, 1_000)
+        XCTAssertTrue(SleepSession.latestIntervals(from: [invalid]).isEmpty)
+        XCTAssertTrue(SleepSession.latestIntervals(from: []).isEmpty)
+    }
+
     func testInvalidIntervalsAreIgnored() {
         let bad = SleepInterval(start: Date(timeIntervalSince1970: 1_700_003_600),
                                 end: Date(timeIntervalSince1970: 1_700_000_000), stage: .core)
