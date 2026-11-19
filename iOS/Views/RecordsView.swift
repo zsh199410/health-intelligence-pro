@@ -34,7 +34,7 @@ struct RecordsView: View {
                                         .foregroundStyle(HealthTheme.jade)
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(metric.name)
-                                        Text(health.readings[metric.id]?.recordedAt.formatted(date: .abbreviated, time: .omitted)
+                                        Text(health.readings[metric.id].map { "上次记录 · \($0.recordedAt.formatted(date: .abbreviated, time: .shortened))" }
                                              ?? "暂无可读取记录")
                                             .font(.caption).foregroundStyle(HealthTheme.muted)
                                     }
@@ -67,6 +67,7 @@ struct RecordsView: View {
             .background(HealthTheme.canvas.ignoresSafeArea())
             .navigationTitle("健康数据库")
             .searchable(text: $searchText, prompt: "搜索心率、HRV、血糖等")
+            .refreshable { await health.refresh() }
             .sheet(isPresented: $showingMeasurement) { ManualMeasurementView() }
             .sheet(isPresented: $showingJournal) { JournalEntryView() }
             .alert("本地记录", isPresented: Binding(
