@@ -6,10 +6,19 @@ import HealthCore
 final class HealthViewModel: ObservableObject {
     @Published private(set) var readings: [String: MetricReading] = [:]
     @Published private(set) var trends: [String: [TrendPoint]] = [:]
+    enum SleepReadState: Equatable { case notRequested, loading, loaded, empty, failed }
+    @Published private(set) var sleepReadState: SleepReadState = .notRequested
+    @Published private(set) var sleepRegularityFailed = false
     @Published private(set) var sleep: SleepSummary?
     /// Latest sleep session window, derived from the same intervals that
     /// produce `sleep`. Nil when there is no sleep record.
     @Published private(set) var sleepWindow: ClosedRange<Date>?
+    /// Raw sleep intervals behind `sleep` (last 36h), for the stage
+    /// timeline. Empty when there is no sleep record.
+    @Published private(set) var sleepIntervals: [SleepInterval] = []
+    /// Sleep session windows over the last 7 days, newest first, for
+    /// sleep regularity. Empty when there is no sleep record.
+    @Published private(set) var sleepSessions7d: [ClosedRange<Date>] = []
     /// Night vitals: latest sample of each night metric whose record falls
     /// inside `sleepWindow`. Never falls back to a daytime reading.
     @Published private(set) var nightReadings: [String: MetricReading] = [:]
@@ -44,6 +53,8 @@ final class HealthViewModel: ObservableObject {
     func refresh() async {
         guard !isLoading, repository.isAvailable else { return }
         isLoading = true
+        sleepReadState = .loading
+        sleepRegularityFailed = false
         defer { isLoading = false }
         // Priority metrics first. Never substitute manufactured readings for missing records.
         let priority = ["heartRate", "restingHeartRate", "hrv", "oxygenSaturation", "respiratoryRate",
@@ -66,11 +77,20 @@ final class HealthViewModel: ObservableObject {
         }
         readings = newReadings
         failedMetricIDs = failures
-        let nightIDs = ["oxygenSaturation", "respiratoryRate", "sleepingWristTemperature", "appleSleepingBreathingDisturbances"]
+        let nightIDs = ["heartRate", "hrv", "oxygenSaturation", "respiratoryRate", "sleepingWristTemperature", "appleSleepingBreathingDisturbances"]
         do {
             let intervals = try await repository.sleepIntervals()
-            sleep = intervals.isEmpty ? nil : SleepCalculator.summarize(intervals)
-            sleepWindow = SleepSession.window(from: intervals)
+            let latestSessionIntervals = SleepSession.latestIntervals(from: intervals)
+            sleep = latestSessionIntervals.isEmpty ? nil : SleepCalculator.summarize(latestSessionIntervals)
+            sleepWindow = SleepSession.window(from: latestSessionIntervals)
+            sleepIntervals = latestSessionIntervals
+            sleepReadState = latestSessionIntervals.isEmpty ? .empty : .loaded
+            do {
+                sleepSessions7d = try await repository.sleepSessions()
+            } catch {
+                sleepSessions7d = []
+                sleepRegularityFailed = true
+            }
             var nights: [String: MetricReading] = [:]
             if let window = sleepWindow {
                 for id in nightIDs {
@@ -82,8 +102,12 @@ final class HealthViewModel: ObservableObject {
             }
             nightReadings = nights
         } catch {
+            sleepReadState = .failed
+            sleepRegularityFailed = false
             sleep = nil
             sleepWindow = nil
+            sleepIntervals = []
+            sleepSessions7d = []
             nightReadings = [:]
         }
         ecgs = (try? await repository.ecgSummaries()) ?? []

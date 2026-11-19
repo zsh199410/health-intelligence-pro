@@ -21,11 +21,11 @@ enum HealthTheme {
     static let amber = color(HealthDesignTokens.amber)
     static let mint = teal
     static let sky = color(HealthDesignTokens.sky)
-    static let ink = color(HealthDesignTokens.ink)
-    static let muted = color(HealthDesignTokens.muted)
-    static let canvas = color(HealthDesignTokens.canvas)
-    static let surface = color(HealthDesignTokens.surface)
-    static let line = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.12) : UIColor(red: 0.839, green: 0.886, blue: 0.882, alpha: 1) })
+    static let ink = color(HealthDesignTokens.v4Ink)
+    static let muted = color(HealthDesignTokens.v4Muted)
+    static let canvas = color(HealthDesignTokens.v4Canvas)
+    static let surface = color(HealthDesignTokens.v4Card)
+    static let line = color(HealthDesignTokens.v4Line)
 
     /// Hero cards are intentionally dark in both schemes.
     static let heroTop = Color(red: 0.035, green: 0.28, blue: 0.32)
@@ -113,7 +113,7 @@ struct MetricTile: View {
                 // Time and source are always two lines, so a tile with no
                 // reading is exactly as tall as one with a reading.
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(reading.map { $0.recordedAt.formatted(date: .abbreviated, time: .shortened) } ?? emptyText)
+                    Text(reading.map { ChineseDateTime.full($0.recordedAt) } ?? emptyText)
                         .font(.caption2).foregroundStyle(HealthTheme.muted).lineLimit(1).minimumScaleFactor(0.8)
                     Text(reading.map { $0.source.isEmpty ? "来源未知" : $0.source } ?? "来源 —")
                         .font(.caption2).foregroundStyle(HealthTheme.muted).lineLimit(1).minimumScaleFactor(0.8)
@@ -265,7 +265,7 @@ struct HealthSourceBadge: View {
         }
         .font(.caption2.weight(.medium))
         .foregroundStyle(HealthTheme.muted)
-        .accessibilityLabel("数据来自\(source)，记录于\(date.formatted())")
+        .accessibilityLabel("数据来自\(source)，记录于\(ChineseDateTime.full(date))")
     }
 }
 
@@ -278,12 +278,12 @@ struct HealthSourceBadge: View {
 // but is 4.45:1 on the secondary background, so never put muted text on
 // v3SurfaceSecondary.
 extension HealthTheme {
-    static let v3Canvas = color(HealthDesignTokens.v3Canvas)
-    static let v3SurfaceSecondary = color(HealthDesignTokens.v3SurfaceSecondary)
-    static let v3Card = color(HealthDesignTokens.v3Card)
-    static let v3Ink = color(HealthDesignTokens.v3Ink)
-    static let v3Muted = color(HealthDesignTokens.v3Muted)
-    static let v3Line = color(HealthDesignTokens.v3Line)
+    static let v3Canvas = color(HealthDesignTokens.v4Canvas)
+    static let v3SurfaceSecondary = color(HealthDesignTokens.v4Card)
+    static let v3Card = color(HealthDesignTokens.v4Card)
+    static let v3Ink = color(HealthDesignTokens.v4Ink)
+    static let v3Muted = color(HealthDesignTokens.v4Muted)
+    static let v3Line = color(HealthDesignTokens.v4Line)
 
     private static func v3Base(_ semantic: HealthDesignTokens.V3Semantic) -> Color {
         Color(red: semantic.base.red, green: semantic.base.green, blue: semantic.base.blue)
@@ -297,7 +297,7 @@ extension HealthTheme {
     }
 
     // Semantic base colors: rings, fills, icons (same hex both modes).
-    static let v3Brand = v3Base(HealthDesignTokens.v3Brand)
+    static let v3Brand = color(HealthDesignTokens.v4Accent)
     static let v3Sleep = v3Base(HealthDesignTokens.v3Sleep)
     static let v3Recovery = v3Base(HealthDesignTokens.v3Recovery)
     static let v3Stress = v3Base(HealthDesignTokens.v3Stress)
@@ -306,13 +306,20 @@ extension HealthTheme {
     static let v3Risk = v3Base(HealthDesignTokens.v3Risk)
 
     // Semantic text colors: darkened in light mode, base in dark mode.
-    static let v3BrandText = v3Text(HealthDesignTokens.v3Brand)
+    static let v3BrandText = color(HealthDesignTokens.v4Accent)
     static let v3SleepText = v3Text(HealthDesignTokens.v3Sleep)
     static let v3RecoveryText = v3Text(HealthDesignTokens.v3Recovery)
     static let v3StressText = v3Text(HealthDesignTokens.v3Stress)
     static let v3EnergyText = v3Text(HealthDesignTokens.v3Energy)
     static let v3LoadText = v3Text(HealthDesignTokens.v3Load)
     static let v3RiskText = v3Text(HealthDesignTokens.v3Risk)
+
+    static let v4Canvas = color(HealthDesignTokens.v4Canvas)
+    static let v4Card = color(HealthDesignTokens.v4Card)
+    static let v4Ink = color(HealthDesignTokens.v4Ink)
+    static let v4Muted = color(HealthDesignTokens.v4Muted)
+    static let v4Line = color(HealthDesignTokens.v4Line)
+    static let v4Accent = color(HealthDesignTokens.v4Accent)
 
     // MARK: V3 layout (8pt grid)
     static let v3CardRadius: CGFloat = 20

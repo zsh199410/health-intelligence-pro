@@ -12,7 +12,7 @@ struct ReportView: View {
                 VStack(alignment: .leading, spacing: 22) {
                     HealthHero {
                         VStack(alignment: .leading, spacing: 14) {
-                            Label("PRIVATE HEALTH REPORT", systemImage: "lock.shield.fill")
+                            Label("私人健康报告", systemImage: "lock.shield.fill")
                                 .font(.caption2.weight(.bold)).tracking(1.3).foregroundStyle(.white.opacity(0.75))
                             Text("把每一次记录，变成更清晰的理解")
                                 .font(.system(.title2, design: .rounded, weight: .bold)).foregroundStyle(.white)
@@ -23,7 +23,14 @@ struct ReportView: View {
                         }
                     }
                     SectionHeadline(title: "本次健康观察", subtitle: "使用已读取数据的可解释规则")
-                    ForEach(health.insights) { insight in
+                    if health.insights.allSatisfy({ $0.supportingMetricIDs.isEmpty }) {
+                        HealthCard {
+                            EmptyHealthState(title: "暂无可生成的观察",
+                                             detail: "读取到足够的健康记录后，报告会列出观察内容与依据。",
+                                             symbol: "doc.text")
+                        }
+                    }
+                    ForEach(health.insights.filter { !$0.supportingMetricIDs.isEmpty }) { insight in
                         HealthCard {
                             VStack(alignment: .leading, spacing: 9) {
                                 HStack(spacing: 9) {
@@ -35,8 +42,20 @@ struct ReportView: View {
                         }
                     }
                     if let refreshed = health.lastRefreshedAt {
-                        Text("读取时间：\(refreshed.formatted())")
+                        Text("读取时间：\(ChineseDateTime.full(refreshed))")
                             .font(.caption).foregroundStyle(HealthTheme.muted)
+                    }
+                    if let earliest = health.readings.values.map(\.recordedAt).min(),
+                       let latest = health.readings.values.map(\.recordedAt).max() {
+                        HealthCard {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("数据依据").font(.headline).foregroundStyle(HealthTheme.ink)
+                                Text("记录范围：\(ChineseDateTime.full(earliest)) – \(ChineseDateTime.full(latest))")
+                                Text("已读取 \(health.readings.count) 项指标；读取失败 \(health.failedMetricIDs.count) 项。")
+                            }
+                            .font(.subheadline)
+                            .foregroundStyle(HealthTheme.muted)
+                        }
                     }
                     HealthPrimaryButton(
                         title: exportState == .success ? "已生成 PDF" : "生成本地 PDF 健康摘要",

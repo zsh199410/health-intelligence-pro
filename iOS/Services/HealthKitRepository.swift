@@ -2,6 +2,24 @@ import Foundation
 import HealthKit
 import HealthCore
 
+struct WorkoutRecord: Identifiable {
+    let id: UUID
+    let start: Date
+    let end: Date
+    let activity: HKWorkoutActivityType
+    let source: String
+    var name: String {
+        switch activity {
+        case .walking: return "步行"
+        case .running: return "跑步"
+        case .cycling: return "骑行"
+        case .swimming: return "游泳"
+        case .traditionalStrengthTraining, .functionalStrengthTraining: return "力量训练"
+        default: return "训练记录"
+        }
+    }
+}
+
 /// HealthKit reads are independent of WatchConnectivity.
 /// Important: read access denial cannot be reliably distinguished from empty data.
 final class HealthKitRepository {
@@ -13,6 +31,7 @@ final class HealthKitRepository {
         var read: Set<HKObjectType> = Set(HealthCatalog.all.map { $0.quantityType as HKObjectType })
         read.insert(HKObjectType.categoryType(forIdentifier: .sleepAnalysis)!)
         read.insert(HKObjectType.electrocardiogramType())
+        read.insert(HKObjectType.workoutType())
         for identifier in [HKCategoryTypeIdentifier.highHeartRateEvent,
                            .lowHeartRateEvent, .irregularHeartRhythmEvent] {
             if let type = HKObjectType.categoryType(forIdentifier: identifier) { read.insert(type) }
@@ -110,6 +129,35 @@ final class HealthKitRepository {
         }
     }
 
+    /// Raw samples of a metric over the last `hours` hours, oldest first.
+    /// Used by the stress page, which needs within-day (hourly) samples;
+    /// `trend` aggregates per day and cannot serve that. Values use the
+    /// metric unit and multiplier, non-finite values are dropped. Only
+    /// the newest `limit` samples are read; the result is re-sorted
+    /// ascending because `sampleQuery` returns newest first.
+    func samples(_ metric: HealthMetric, hours: Int, limit: Int = 500) async throws -> [TrendPoint] {
+        guard let start = Calendar.current.date(byAdding: .hour, value: -max(1, hours), to: Date()) else { return [] }
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: Date())
+        let raw = try await sampleQuery(type: metric.quantityType, predicate: predicate, limit: limit)
+        var result: [TrendPoint] = []
+        for case let sample as HKQuantitySample in raw {
+            let value = sample.quantity.doubleValue(for: metric.unit) * metric.multiplier
+            guard value.isFinite else { continue }
+            result.append(TrendPoint(recordedAt: sample.endDate, value: value))
+        }
+        return result.sorted { $0.recordedAt < $1.recordedAt }
+    }
+
+    func recentWorkouts(limit: Int = 20) async throws -> [WorkoutRecord] {
+        let samples = try await sampleQuery(type: HKObjectType.workoutType(), predicate: nil, limit: limit)
+        return samples.compactMap { sample in
+            guard let workout = sample as? HKWorkout else { return nil }
+            return WorkoutRecord(id: workout.uuid, start: workout.startDate, end: workout.endDate,
+                                 activity: workout.workoutActivityType,
+                                 source: workout.sourceRevision.source.name)
+        }
+    }
+
     func sleepIntervals() async throws -> [SleepInterval] {
         let since = Calendar.current.date(byAdding: .hour, value: -36, to: Date())!
         let predicate = HKQuery.predicateForSamples(withStart: since, end: .now)
@@ -129,6 +177,49 @@ final class HealthKitRepository {
             }
             return SleepInterval(start: sample.startDate, end: sample.endDate, stage: stage)
         }
+    }
+
+    /// Sleep session windows over the last `days` days, for sleep
+    /// regularity (bedtime / wake-time consistency). Same 2-hour gap
+    /// sessionization as `SleepSession.window`, but returns every
+    /// session, newest first. Empty when there is no sleep record.
+    func sleepSessions(days: Int = 7) async throws -> [ClosedRange<Date>] {
+        let since = Calendar.current.date(byAdding: .day, value: -days, to: Date())!
+        let predicate = HKQuery.predicateForSamples(withStart: since, end: .now)
+        let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis)!
+        let samples = try await sampleQuery(type: sleepType, predicate: predicate, limit: 1000)
+        let intervals = samples.compactMap { sample -> SleepInterval? in
+            guard let sample = sample as? HKCategorySample,
+                  let value = HKCategoryValueSleepAnalysis(rawValue: sample.value) else { return nil }
+            let stage: SleepStage
+            switch value {
+            case .asleepREM: stage = .rem
+            case .asleepCore: stage = .core
+            case .asleepDeep: stage = .deep
+            case .asleepUnspecified: stage = .unspecified
+            case .awake: stage = .awake
+            default: return nil // .inBed overlaps with actual stages
+            }
+            return SleepInterval(start: sample.startDate, end: sample.endDate, stage: stage)
+        }
+        let sorted = intervals.filter { $0.end > $0.start }.sorted { $0.start < $1.start }
+        guard !sorted.isEmpty else { return [] }
+        let maxGap: TimeInterval = 2 * 3600
+        var sessions: [ClosedRange<Date>] = []
+        var runStart = sorted[0].start
+        var runEnd = sorted[0].end
+        for interval in sorted.dropFirst() {
+            if interval.start.timeIntervalSince(runEnd) < maxGap {
+                runStart = min(runStart, interval.start)
+                runEnd = max(runEnd, interval.end)
+            } else {
+                sessions.append(runStart...runEnd)
+                runStart = interval.start
+                runEnd = interval.end
+            }
+        }
+        sessions.append(runStart...runEnd)
+        return sessions.reversed()
     }
 
     func ecgSummaries() async throws -> [ECGSummary] {

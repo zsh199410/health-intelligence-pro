@@ -65,6 +65,8 @@ enum HealthCatalog {
         .init("leanBodyMass", "去脂体重", "figure.strengthtraining.traditional", .leanBodyMass, .gramUnit(with: .kilo), "kg", .body),
         .init("height", "身高", "ruler.fill", .height, .meter(), "m", .body, decimals: 2),
         .init("waistCircumference", "腰围", "circle.dotted", .waistCircumference, .meterUnit(with: .centi), "cm", .body),
+        .init("dietaryWater", "今日饮水", "drop.fill", .dietaryWater, .literUnit(with: .milli), "毫升", .body, decimals: 0, aggregation: .sumToday),
+        .init("dietaryEnergy", "今日饮食能量", "fork.knife", .dietaryEnergyConsumed, .kilocalorie(), "kcal", .body, decimals: 0, aggregation: .sumToday),
         .init("vo2Max", "心肺适能 VO₂max", "lungs", .vo2Max, mlkgmin, "mL/kg/min", .heart),
         .init("stepCount", "今日步数", "shoeprints.fill", .stepCount, .count(), "步", .mobility, decimals: 0, aggregation: .sumToday),
         .init("distanceWalkingRunning", "今日步行距离", "figure.walk.motion", .distanceWalkingRunning, .meterUnit(with: .kilo), "km", .mobility, aggregation: .sumToday),

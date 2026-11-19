@@ -63,6 +63,14 @@ public enum HealthDesignTokens {
         }
     }
 
+    // MARK: - V4 iOS presentation palette
+    public static let v4Canvas = Token(hexLight: 0xF6F5FB, hexDark: 0x151321)
+    public static let v4Card = Token(hexLight: 0xFFFFFF, hexDark: 0x211D31)
+    public static let v4Ink = Token(hexLight: 0x1B1830, hexDark: 0xFAF5FF)
+    public static let v4Muted = Token(hexLight: 0x625B75, hexDark: 0xC2B8D2)
+    public static let v4Line = Token(hexLight: 0xE6E0F1, hexDark: 0x3D3452)
+    public static let v4Accent = Token(hexLight: 0x5038A4, hexDark: 0xCFBAFF)
+
     // MARK: - V3 dual-theme tokens (GitHub Issue #2, 2026-11-17)
     //
     // Light mode: glacier white / mist blue. Dark mode: deep sea blue.

@@ -36,7 +36,7 @@ struct WatchDashboard: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("健康中枢").font(.headline.weight(.bold)).foregroundStyle(.white)
-                        Text("WATCH HEALTH").font(.system(size: 9, weight: .bold))
+                        Text("手表健康").font(.system(size: 9, weight: .bold))
                             .tracking(1.4).foregroundStyle(WatchPalette.mint)
                     }
                     Spacer()
@@ -67,7 +67,7 @@ struct WatchDashboard: View {
                         }
                     }
                     if let window = store.sleepWindow {
-                        Text("\(window.lowerBound.formatted(.dateTime.hour().minute())) – \(window.upperBound.formatted(.dateTime.hour().minute()))")
+                        Text("\(WatchChineseDateTime.time(window.lowerBound)) – \(WatchChineseDateTime.time(window.upperBound))")
                             .font(.caption2).foregroundStyle(WatchPalette.secondary).lineLimit(1)
                     }
                     if let sleep = store.sleep, sleep.totalAsleepMinutes > 0 {
@@ -142,7 +142,7 @@ struct WatchDashboard: View {
                     .font(.title3).foregroundStyle(WatchPalette.pink)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(reading.map { "上次记录 \($0.recordedAt.formatted(date: .abbreviated, time: .shortened))" } ?? "暂无记录")
+                Text(reading.map { "上次记录 \(WatchChineseDateTime.full($0.recordedAt))" } ?? "暂无记录")
                     .font(.caption2).foregroundStyle(WatchPalette.secondary).lineLimit(1).minimumScaleFactor(0.8)
                 Text(reading.map { $0.source.isEmpty ? "来源未知" : $0.source } ?? "来源 —")
                     .font(.caption2).foregroundStyle(WatchPalette.secondary).lineLimit(1).minimumScaleFactor(0.8)
@@ -199,9 +199,24 @@ struct WatchDashboard: View {
         guard let reading else { return "\(title)，暂无记录" }
         let integerIDs = ["heartRate", "restingHeartRate"]
         let value = integerIDs.contains(id) ? String(Int(reading.value.rounded())) : String(format: "%.1f", reading.value)
-        let time = reading.recordedAt.formatted(date: .abbreviated, time: .shortened)
+        let time = WatchChineseDateTime.full(reading.recordedAt)
         let source = reading.source.isEmpty ? "来源未知" : reading.source
         let stale = isStale(reading) ? "，数据较旧" : ""
         return "\(title)，\(value) \(unit)，上次记录 \(time)，来源 \(source)\(stale)"
+    }
+}
+
+/// Watch target uses its own formatter because iOS-only files are not linked.
+private enum WatchChineseDateTime {
+    static func full(_ date: Date) -> String { format(date, pattern: "M月d日 HH:mm") }
+    static func time(_ date: Date) -> String { format(date, pattern: "HH:mm") }
+
+    private static func format(_ date: Date, pattern: String) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_Hans_CN")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = .current
+        formatter.dateFormat = pattern
+        return formatter.string(from: date)
     }
 }
