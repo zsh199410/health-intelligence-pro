@@ -75,6 +75,7 @@ struct TodayView: View {
                 V3Pill(title: "本机私密", icon: "lock.shield.fill")
             }
             Text("今日")
+                .accessibilityIdentifier("screen-today-title")
                 .font(.largeTitle.weight(.bold))
                 .foregroundStyle(HealthTheme.v3Ink)
                 .minimumScaleFactor(0.85)
