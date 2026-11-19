@@ -47,7 +47,7 @@ struct HeartView: View {
                                             .foregroundStyle(HealthTheme.coral).font(.title3)
                                         VStack(alignment: .leading, spacing: 5) {
                                             Text(ecg.classification).font(.headline).foregroundStyle(HealthTheme.ink)
-                                            Text(ecg.recordedAt.formatted())
+                                            Text(ChineseDateTime.full(ecg.recordedAt))
                                                 .font(.caption).foregroundStyle(HealthTheme.muted)
                                             if let rate = ecg.averageHeartRate {
                                                 Text("平均心率 \(Int(rate.rounded())) 次/分")
@@ -73,7 +73,7 @@ struct HeartView: View {
                                         Image(systemName: "bell.badge.fill").foregroundStyle(HealthTheme.amber)
                                         VStack(alignment: .leading, spacing: 4) {
                                             Text(event.type).font(.subheadline.weight(.medium))
-                                            Text(event.date.formatted()).font(.caption).foregroundStyle(HealthTheme.muted)
+                                            Text(ChineseDateTime.full(event.date)).font(.caption).foregroundStyle(HealthTheme.muted)
                                         }
                                         Spacer()
                                     }
@@ -103,7 +103,7 @@ struct ECGDetailView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HealthPill(title: "只读记录", icon: "lock.fill", tint: HealthTheme.coral)
                         Text(ecg.classification).font(.title2.bold()).foregroundStyle(HealthTheme.ink)
-                        Text(ecg.recordedAt.formatted()).font(.caption).foregroundStyle(HealthTheme.muted)
+                        Text(ChineseDateTime.full(ecg.recordedAt)).font(.caption).foregroundStyle(HealthTheme.muted)
                     }
                 }
                 HealthCard {
@@ -208,7 +208,7 @@ struct MetricDetailView: View {
                     HealthCard {
                         VStack(spacing: 12) {
                             LabeledContent("记录来源", value: reading.source)
-                            LabeledContent("记录时间", value: reading.recordedAt.formatted())
+                            LabeledContent("记录时间", value: ChineseDateTime.full(reading.recordedAt))
                             LabeledContent("数据新鲜度", value: FreshnessEvaluator.evaluate(recordedAt: reading.recordedAt, now: .now, acceptableAge: 24 * 3600).rawValue)
                             LabeledContent("单位", value: metric.unitText.isEmpty ? "无量纲" : metric.unitText)
                         }

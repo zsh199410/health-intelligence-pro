@@ -12,7 +12,7 @@ struct ReportView: View {
                 VStack(alignment: .leading, spacing: 22) {
                     HealthHero {
                         VStack(alignment: .leading, spacing: 14) {
-                            Label("PRIVATE HEALTH REPORT", systemImage: "lock.shield.fill")
+                            Label("私人健康报告", systemImage: "lock.shield.fill")
                                 .font(.caption2.weight(.bold)).tracking(1.3).foregroundStyle(.white.opacity(0.75))
                             Text("把每一次记录，变成更清晰的理解")
                                 .font(.system(.title2, design: .rounded, weight: .bold)).foregroundStyle(.white)
@@ -35,7 +35,7 @@ struct ReportView: View {
                         }
                     }
                     if let refreshed = health.lastRefreshedAt {
-                        Text("读取时间：\(refreshed.formatted())")
+                        Text("读取时间：\(ChineseDateTime.full(refreshed))")
                             .font(.caption).foregroundStyle(HealthTheme.muted)
                     }
                     HealthPrimaryButton(

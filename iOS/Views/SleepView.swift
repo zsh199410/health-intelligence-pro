@@ -11,8 +11,8 @@ struct SleepView: View {
     /// session ("夜间最近一次"), never a daytime reading.
     private var nightSubtitle: String {
         guard let window = health.sleepWindow else { return "暂无睡眠记录" }
-        let start = window.lowerBound.formatted(.dateTime.month().day().hour().minute())
-        let end = window.upperBound.formatted(.dateTime.month().day().hour().minute())
+        let start = ChineseDateTime.full(window.lowerBound)
+        let end = ChineseDateTime.full(window.upperBound)
         return "本次睡眠 \(start) – \(end) · 夜间最近一次"
     }
     var body: some View {

@@ -67,7 +67,7 @@ struct TodayView: View {
     private var pageHeading: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("HEALTH INTELLIGENCE")
+                Text("健康中枢 PRO")
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .tracking(2)
                     .foregroundStyle(HealthTheme.v3BrandText)
@@ -78,7 +78,7 @@ struct TodayView: View {
                 .font(HealthTheme.v3TitleFont)
                 .foregroundStyle(HealthTheme.v3Ink)
                 .minimumScaleFactor(0.85)
-            Text(Date.now.formatted(.dateTime.year().month(.wide).day().weekday(.wide)))
+            Text(ChineseDateTime.day(Date.now))
                 .font(.subheadline)
                 .foregroundStyle(HealthTheme.v3Muted)
         }
@@ -89,7 +89,7 @@ struct TodayView: View {
         V3Hero {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 8) {
-                    Text("HEALTH SNAPSHOT")
+                    Text("健康概览")
                         .font(.caption2.weight(.bold))
                         .tracking(2)
                         .foregroundStyle(HealthTheme.v3Muted)
@@ -111,7 +111,7 @@ struct TodayView: View {
                         Text("\(modulesWithData)/5 个模块有数据")
                             .font(.subheadline)
                             .foregroundStyle(HealthTheme.v3Muted)
-                        Text(health.lastRefreshedAt.map { "数据更新于 \($0.formatted(date: .omitted, time: .shortened))" } ?? "尚未读取")
+                        Text(health.lastRefreshedAt.map { "数据更新于 \(ChineseDateTime.full($0))" } ?? "尚未读取")
                             .font(HealthTheme.v3AuxFont)
                             .foregroundStyle(HealthTheme.v3Muted)
                     }
@@ -125,14 +125,27 @@ struct TodayView: View {
     }
 
     private var quickStats: some View {
-        HStack(spacing: 8) {
-            quickStat(label: "睡眠", value: sleepDurationText)
-            Divider().frame(height: 36)
-            quickStat(label: "静息心率", value: readingText("restingHeartRate"))
-            Divider().frame(height: 36)
-            quickStat(label: "HRV", value: readingText("hrv"))
+        // Vertical layout at accessibility sizes prevents the three values
+        // from shrinking into unreadable labels on smaller iPhones.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                quickStat(label: "睡眠", value: sleepDurationText)
+                Divider().frame(height: 36)
+                quickStat(label: "静息心率", value: readingText("restingHeartRate"))
+                Divider().frame(height: 36)
+                quickStat(label: "HRV", value: readingText("hrv"))
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            VStack(alignment: .leading, spacing: 10) {
+                quickStat(label: "睡眠", value: sleepDurationText)
+                Divider()
+                quickStat(label: "静息心率", value: readingText("restingHeartRate"))
+                Divider()
+                quickStat(label: "HRV", value: readingText("hrv"))
+            }
         }
         .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(HealthTheme.v3SurfaceSecondary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
@@ -340,7 +353,7 @@ struct TodayView: View {
 
         let sleepSupporting: String
         if let window = health.sleepWindow {
-            sleepSupporting = "\(window.lowerBound.formatted(date: .omitted, time: .shortened)) – \(window.upperBound.formatted(date: .omitted, time: .shortened))"
+            sleepSupporting = "\(ChineseDateTime.full(window.lowerBound)) – \(ChineseDateTime.full(window.upperBound))"
         } else if sleepMinutes > 0, let sleep {
             sleepSupporting = "深睡 \(sleep.minutesByStage[.deep] ?? 0)分 · REM \(sleep.minutesByStage[.rem] ?? 0)分"
         } else {

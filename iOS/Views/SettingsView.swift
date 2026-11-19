@@ -62,7 +62,7 @@ struct SettingsView: View {
                         .font(.footnote).foregroundStyle(HealthTheme.muted)
                 }
                 Section("关于") {
-                    LabeledContent("产品", value: "健康中枢 · Health Intelligence")
+                    LabeledContent("产品", value: "健康中枢 Pro")
                     LabeledContent("版本", value: "1.0.0 · 工程候选版")
                     LabeledContent("健康数据", value: "HealthKit")
                     Text("非医疗器械，不用于疾病诊断或急救监护。")
