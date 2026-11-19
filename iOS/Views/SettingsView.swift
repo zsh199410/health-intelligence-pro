@@ -13,9 +13,9 @@ struct SettingsView: View {
                 Section {
                     HStack(spacing: 12) {
                         Image(systemName: "lock.shield.fill")
-                            .foregroundStyle(HealthTheme.teal).font(.title2)
+                            .foregroundStyle(HealthTheme.v4Accent).font(.title2)
                             .frame(width: 48, height: 48)
-                            .background(HealthTheme.teal.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
+                            .background(HealthTheme.v4Accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
                         VStack(alignment: .leading, spacing: 4) {
                             Text("你的健康数据，由你控制").font(.headline)
                             Text("默认本机处理；不含广告跟踪或云端上传。")
@@ -54,11 +54,11 @@ struct SettingsView: View {
                     Label("健康指标按需访问，不连接第三方服务器", systemImage: "network.slash")
                     Label("日志写入 App 私有目录并启用文件保护", systemImage: "iphone.gen3.radiowaves.left.and.right")
                     Label("PDF 仅在主动生成后交由系统分享", systemImage: "square.and.arrow.up")
-                    Text("手表版采用独立 HealthKit 授权；从手表向手机只传递刷新时间，不传输原始医疗读数。")
+                    Text("手表版单独请求健康数据授权。只有主动开始训练时才会记录训练数据。")
                         .font(.footnote).foregroundStyle(HealthTheme.muted)
                 }
                 Section("Apple Watch 配套安装") {
-                    Text("必须为 watchOS Target 提供正确的 Bundle ID、手表 UDID 和描述文件。你现有的第三方 P12 不保证包含 Watch 安装权限。")
+                    Text("在 Apple Watch 上安装配套 App 后，可查看最近记录并主动开始训练。安装或授权遇到问题时，请在手表上检查健康访问设置。")
                         .font(.footnote).foregroundStyle(HealthTheme.muted)
                 }
                 Section("关于") {

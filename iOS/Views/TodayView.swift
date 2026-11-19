@@ -9,8 +9,10 @@ import HealthCore
 /// expected). Levels describe data freshness, never a diagnosis.
 struct TodayView: View {
     @EnvironmentObject private var health: HealthViewModel
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("themePreference") private var themePreference: AppThemePreference = .system
     @State private var showSettings = false
+    @StateObject private var motion = LiveMotionStore()
     /// Set by RootView so the Sleep module card can switch to the Sleep tab.
     var onOpenSleepTab: () -> Void = {}
 
@@ -22,9 +24,12 @@ struct TodayView: View {
 
     private var hasNoData: Bool { health.readings.isEmpty && health.sleep == nil }
 
-    private var isStale: Bool {
-        guard let last = health.lastRefreshedAt else { return false }
-        return Date().timeIntervalSince(last) > 24 * 3600
+    private var latestSampledAt: Date? {
+        let measured = health.readings.compactMap { entry -> Date? in
+            guard HealthCatalog.byID[entry.key]?.aggregation == .latest else { return nil }
+            return entry.value.recordedAt
+        }
+        return (measured + [health.sleepWindow?.upperBound].compactMap { $0 }).max()
     }
 
     var body: some View {
@@ -33,6 +38,7 @@ struct TodayView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     pageHeading
                     hero
+                    currentSection
                     stateContent
                     footer
                 }
@@ -61,6 +67,32 @@ struct TodayView: View {
                     await health.refresh()
                 }
             }
+            .onDisappear { motion.stop() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase != .active { motion.stop() }
+            }
+        }
+    }
+
+    private var currentSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            V3SectionHeadline(title: "此刻与近期", subtitle: "心情由你记录；心率显示最近一次真实测量")
+            if let metric = HealthCatalog.byID["heartRate"] {
+                NavigationLink {
+                    MetricDetailView(metric: metric)
+                } label: {
+                    LatestHeartRateCard(
+                        reading: health.readings["heartRate"],
+                        readFailed: health.failedMetricIDs.contains("heartRate"),
+                        accessRequested: health.hasRequestedAccess,
+                        lastCheckedAt: health.lastCheckedAtByMetric["heartRate"]
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("latest-heart-rate-card")
+            }
+            MoodCheckInCard()
+            LiveMotionCard(motion: motion)
         }
     }
 
@@ -179,8 +211,8 @@ struct TodayView: View {
             if health.failedMetricIDs.isEmpty == false {
                 V3ErrorBanner(failedCount: health.failedMetricIDs.count)
             }
-            if isStale {
-                V3StaleBanner(lastUpdated: health.lastRefreshedAt ?? .now)
+            if let latestSampledAt {
+                StaleSamplesNotice(recordedAt: latestSampledAt, context: "首页", maximumAge: 24 * 3600)
             }
             vitalsSection
             modulesSection

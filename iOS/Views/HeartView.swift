@@ -4,9 +4,14 @@ import HealthCore
 
 struct HeartView: View {
     @EnvironmentObject private var health: HealthViewModel
-    private let metricIDs = ["heartRate", "restingHeartRate", "hrv", "walkingHeartRateAverage",
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    private let metricIDs = ["restingHeartRate", "hrv", "walkingHeartRateAverage",
                              "systolic", "diastolic", "atrialFibrillationBurden", "heartRateRecoveryOneMinute", "vo2Max"]
-    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+    private var columns: [GridItem] {
+        dynamicTypeSize.isAccessibilitySize
+            ? [GridItem(.flexible())]
+            : [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+    }
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -22,7 +27,19 @@ struct HeartView: View {
                                 .font(.subheadline).foregroundStyle(HealthTheme.muted)
                         }
                     }
-                    SectionHeadline(title: "心血管指标", subtitle: "可点击任意指标查看来源与历史")
+                    if let metric = HealthCatalog.byID["heartRate"] {
+                        NavigationLink { MetricDetailView(metric: metric) } label: {
+                            LatestHeartRateCard(
+                                reading: health.readings["heartRate"],
+                                readFailed: health.failedMetricIDs.contains("heartRate"),
+                                accessRequested: health.hasRequestedAccess,
+                                lastCheckedAt: health.lastCheckedAtByMetric["heartRate"]
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("heart-latest-reading")
+                    }
+                    SectionHeadline(title: "其他心血管指标", subtitle: "每项显示测量时间与来源；点击查看历史")
                     LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(metricIDs, id: \.self) { id in
                             if let metric = HealthCatalog.byID[id] {
@@ -82,7 +99,7 @@ struct HeartView: View {
                             }
                         }
                     }
-                    Text("本页仅展示授权的历史记录。无法自行启动苹果系统 ECG 采集，也不对 ECG 进行疾病诊断。")
+                    Text("本页显示已保存的健康记录。无法自行启动苹果系统 ECG 采集，也不对 ECG 进行疾病诊断。")
                         .font(.footnote).foregroundStyle(HealthTheme.muted)
                 }.padding(18)
             }

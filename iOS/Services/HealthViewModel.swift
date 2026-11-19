@@ -31,20 +31,41 @@ final class HealthViewModel: ObservableObject {
     @Published private(set) var ecgVoltages: [UUID: [ECGVoltagePoint]] = [:]
     @Published private(set) var isECGLoading = false
     @Published private(set) var isLoading = false
-    @Published private(set) var hasRequestedAccess = false
+    @Published private(set) var hasRequestedAccess = UserDefaults.standard.bool(forKey: "healthAccessRequested")
     @Published var message: String?
+    /// When the app last checked each metric. The measurement time remains
+    /// `MetricReading.recordedAt`; checking an old sample does not make it new.
+    @Published private(set) var lastCheckedAtByMetric: [String: Date] = [:]
+    @Published private(set) var lastLiveUpdateAt: Date?
+    /// Registration failures observed so far. An absent entry does not
+    /// promise a delivery schedule; foreground and manual refresh still work.
+    @Published private(set) var backgroundDeliveryFailures: [String: String] = [:]
+    /// Time the complete catalogue, sleep, ECG and events were last queried.
     @Published var lastRefreshedAt: Date?
 
     private let repository = HealthKitRepository()
+    private var liveUpdates: HealthKitLiveUpdates?
+    private var pendingLiveMetricIDs = Set<String>()
+    private var isRefreshingLiveMetrics = false
     var isHealthAvailable: Bool { repository.isAvailable }
     var insights: [HealthInsight] { InsightEngine.insights(readings: readings, sleep: sleep) }
+
+    /// Called by UIApplicationDelegate before SwiftUI creates a window.
+    /// HealthKit may launch the process in the background just to deliver an
+    /// observer notification, so registration cannot depend on RootView.
+    func registerForBackgroundDeliveryAtLaunch() {
+        if hasRequestedAccess { startLiveUpdates() }
+    }
 
     func connectAndRefresh() async {
         guard !isLoading else { return }
         do {
             try await repository.requestAccess()
             hasRequestedAccess = true
+            UserDefaults.standard.set(true, forKey: "healthAccessRequested")
             await refresh()
+            startLiveUpdates()
+            liveUpdates?.catchUp()
         } catch {
             message = "健康访问请求失败：\(error.localizedDescription)"
         }
@@ -55,7 +76,12 @@ final class HealthViewModel: ObservableObject {
         isLoading = true
         sleepReadState = .loading
         sleepRegularityFailed = false
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            if !pendingLiveMetricIDs.isEmpty {
+                Task { @MainActor [weak self] in await self?.processPendingLiveMetrics() }
+            }
+        }
         // Priority metrics first. Never substitute manufactured readings for missing records.
         let priority = ["heartRate", "restingHeartRate", "hrv", "oxygenSaturation", "respiratoryRate",
                         "sleepingWristTemperature", "systolic", "diastolic", "bloodGlucose"]
@@ -64,6 +90,7 @@ final class HealthViewModel: ObservableObject {
         }
         var newReadings: [String: MetricReading] = [:]
         var failures: [String] = []
+        var checkedAt = lastCheckedAtByMetric
         for metric in ordered {
             do {
                 if let reading = try await repository.reading(metric) {
@@ -74,9 +101,11 @@ final class HealthViewModel: ObservableObject {
                 // can look identical by HealthKit design, so they stay out.
                 failures.append(metric.id)
             }
+            checkedAt[metric.id] = .now
         }
         readings = newReadings
         failedMetricIDs = failures
+        lastCheckedAtByMetric = checkedAt
         let nightIDs = ["heartRate", "hrv", "oxygenSaturation", "respiratoryRate", "sleepingWristTemperature", "appleSleepingBreathingDisturbances"]
         do {
             let intervals = try await repository.sleepIntervals()
@@ -113,6 +142,78 @@ final class HealthViewModel: ObservableObject {
         ecgs = (try? await repository.ecgSummaries()) ?? []
         heartEvents = (try? await repository.heartEvents()) ?? []
         lastRefreshedAt = .now
+        // Older app versions did not persist whether access was requested.
+        // Readable samples prove this installation has already obtained a
+        // HealthKit grant; a skipped onboarding with no data does not opt in.
+        if !readings.isEmpty && !hasRequestedAccess {
+            hasRequestedAccess = true
+            UserDefaults.standard.set(true, forKey: "healthAccessRequested")
+        }
+        if hasRequestedAccess { startLiveUpdates() }
+    }
+
+    /// Called as the app becomes active. Observers can be delayed while the
+    /// process is suspended, so an anchored reconciliation runs on resume.
+    func resumeFromForeground() {
+        guard hasRequestedAccess, repository.isAvailable else { return }
+        startLiveUpdates()
+        liveUpdates?.catchUp()
+        if let lastRefreshedAt, Date().timeIntervalSince(lastRefreshedAt) > 15 * 60 {
+            Task { await refresh() }
+        }
+    }
+
+    private func startLiveUpdates() {
+        guard repository.isAvailable else { return }
+        if liveUpdates == nil {
+            liveUpdates = HealthKitLiveUpdates(
+                onChange: { [weak self] changedIDs in
+                    await self?.receiveLiveChanges(changedIDs)
+                },
+                onBackgroundDeliveryResult: { [weak self] id, error in
+                    guard let self else { return }
+                    if let error { self.backgroundDeliveryFailures[id] = error }
+                    else { self.backgroundDeliveryFailures.removeValue(forKey: id) }
+                }
+            )
+        }
+        liveUpdates?.start()
+    }
+
+    private func receiveLiveChanges(_ changedIDs: Set<String>) async {
+        pendingLiveMetricIDs.formUnion(changedIDs)
+        await processPendingLiveMetrics()
+    }
+
+    private func processPendingLiveMetrics() async {
+        guard !isLoading, !isRefreshingLiveMetrics else { return }
+        isRefreshingLiveMetrics = true
+        defer { isRefreshingLiveMetrics = false }
+        while !pendingLiveMetricIDs.isEmpty {
+            guard !isLoading else { return }
+            let ids = pendingLiveMetricIDs
+            pendingLiveMetricIDs.removeAll()
+            var failures = Set(failedMetricIDs)
+            for id in ids.sorted() {
+                guard let metric = HealthCatalog.byID[id] else { continue }
+                do {
+                    if let reading = try await repository.reading(metric) {
+                        readings[id] = reading
+                    } else {
+                        // Also handles deletion of the latest sample.
+                        readings.removeValue(forKey: id)
+                    }
+                    failures.remove(id)
+                } catch {
+                    // Preserve the prior, timestamped sample on a transient
+                    // query error and expose the failure separately.
+                    failures.insert(id)
+                }
+                lastCheckedAtByMetric[id] = .now
+            }
+            failedMetricIDs = failures.sorted()
+            lastLiveUpdateAt = .now
+        }
     }
 
     func loadECGVoltage(for id: UUID) async {

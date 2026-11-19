@@ -1,11 +1,29 @@
 import SwiftUI
 import HealthCore
+import WatchKit
+
+@MainActor
+final class WatchWorkoutLaunchDelegate: NSObject, WKApplicationDelegate {
+    let workout = WatchWorkoutManager()
+
+    func handleActiveWorkoutRecovery() {
+        workout.recoverActiveWorkoutIfNeeded(force: true)
+    }
+}
 
 @main
 struct HealthWatchApp: App {
+    @WKApplicationDelegateAdaptor(WatchWorkoutLaunchDelegate.self) private var launchDelegate
     @StateObject private var store = WatchHealthStore()
     var body: some Scene {
-        WindowGroup { WatchDashboard().environmentObject(store) }
+        WindowGroup {
+            NavigationStack {
+                WatchDashboard()
+                    .environmentObject(store)
+                    .environmentObject(launchDelegate.workout)
+            }
+            .task { launchDelegate.workout.recoverActiveWorkoutIfNeeded() }
+        }
     }
 }
 
@@ -29,6 +47,7 @@ private enum WatchPalette {
 
 struct WatchDashboard: View {
     @EnvironmentObject private var store: WatchHealthStore
+    @EnvironmentObject private var workout: WatchWorkoutManager
     var body: some View {
         ScrollViewReader { proxy in
         ScrollView {
@@ -43,6 +62,17 @@ struct WatchDashboard: View {
                     Image(systemName: "heart.text.square.fill").foregroundStyle(WatchPalette.mint)
                 }
                 pulseCard
+                NavigationLink {
+                    WatchWorkoutView().environmentObject(workout)
+                } label: {
+                    Label(workoutLinkTitle,
+                          systemImage: "figure.run.circle.fill")
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(WatchPalette.mint)
+                .accessibilityHint("打开训练页面，只有主动开始训练后才采集实时心率")
                 HStack(spacing: 8) {
                     smallCard("HRV", id: "hrv", unit: "ms", symbol: "waveform.path.ecg")
                     smallCard("血氧", id: "oxygenSaturation", unit: "%", symbol: "lungs.fill")
@@ -109,6 +139,9 @@ struct WatchDashboard: View {
                 }
             }
         }
+        .onChange(of: workout.phase) { _, phase in
+            if phase == .finished { Task { await store.refresh() } }
+        }
         .containerBackground(.black, for: .navigation)
         .alert("提示", isPresented: Binding(
             get: { store.errorMessage != nil },
@@ -117,6 +150,15 @@ struct WatchDashboard: View {
         message: { Text(store.errorMessage ?? "") }
         }
     }
+
+    private var workoutLinkTitle: String {
+        switch workout.phase {
+        case .starting, .running, .paused, .ending: return "返回正在进行的训练"
+        case .saveFailed: return "继续保存训练"
+        case .idle, .finished: return "开始实时训练"
+        }
+    }
+
     private func stageColor(_ stage: SleepStage) -> Color {
         WatchPalette.color(HealthDesignTokens.stageToken(for: stage))
     }

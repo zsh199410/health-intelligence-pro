@@ -72,9 +72,10 @@ final class HealthKitRepository {
             date = sample.endDate
             source = sample.sourceRevision.source.name
         case .sumToday:
-            let (total, end) = try await todaySum(metric.quantityType, unit: metric.unit)
+            let (total, latestSampleDate) = try await todaySum(metric.quantityType, unit: metric.unit)
+            guard let latestSampleDate else { return nil }
             value = total.map { $0 * metric.multiplier }
-            date = end
+            date = latestSampleDate
             source = "HealthKit 日累计"
         }
         guard let value, value.isFinite else { return nil }
@@ -330,17 +331,23 @@ final class HealthKitRepository {
         return samples.first as? HKQuantitySample
     }
 
-    private func todaySum(_ type: HKQuantityType, unit: HKUnit) async throws -> (Double?, Date) {
+    private func todaySum(_ type: HKQuantityType, unit: HKUnit) async throws -> (Double?, Date?) {
         let start = Calendar.current.startOfDay(for: .now)
         let predicate = HKQuery.predicateForSamples(withStart: start, end: Date())
-        return try await withCheckedThrowingContinuation { continuation in
+        let total: Double? = try await withCheckedThrowingContinuation { continuation in
             let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate,
                                           options: .cumulativeSum) { _, statistics, error in
                 if let error { continuation.resume(throwing: error); return }
-                continuation.resume(returning: (statistics?.sumQuantity()?.doubleValue(for: unit), Date()))
+                continuation.resume(returning: statistics?.sumQuantity()?.doubleValue(for: unit))
             }
             store.execute(query)
         }
+        guard total != nil else { return (nil, nil) }
+        let samples = try await sampleQuery(type: type, predicate: predicate, limit: 1)
+        let latest = samples.first as? HKQuantitySample
+        // `Date()` would only say when this query ran. Keep the latest
+        // contributing sample's time so the UI can identify an old total.
+        return (total, latest?.endDate)
     }
 
     private func sampleQuery(type: HKSampleType, predicate: NSPredicate?, limit: Int) async throws -> [HKSample] {

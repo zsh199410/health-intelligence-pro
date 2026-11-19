@@ -14,7 +14,9 @@ import HealthCore
 /// as a stress diagnosis, an emotion judgement, or medical advice.
 struct StressView: View {
     @EnvironmentObject private var health: HealthViewModel
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var loader: StressDataLoader
+    @State private var pendingSampleRefresh: Task<Void, Never>?
 
     init() {
         _loader = StateObject(wrappedValue: StressDataLoader(repository: HealthKitRepository()))
@@ -43,9 +45,16 @@ struct StressView: View {
         loader.hasPhysiologicalSamples == false
     }
 
-    private var isStale: Bool {
-        guard let last = health.lastRefreshedAt else { return false }
-        return Date().timeIntervalSince(last) > 24 * 3600
+    private var latestStressSampledAt: Date? {
+        ["heartRate", "hrv", "respiratoryRate"]
+            .flatMap { loader.samples[$0] ?? [] }
+            .map(\.recordedAt)
+            .max()
+    }
+
+    private var relevantReadingTimes: [Date?] {
+        (stressIDs + ["restingHeartRate"])
+            .map { health.readings[$0]?.recordedAt }
     }
 
     private var failedIDs: [String] {
@@ -107,13 +116,16 @@ struct StressView: View {
     }
 
     private var dataSourceText: String {
+        var parts = ["来源：Apple 健康"]
+        if let latestStressSampledAt {
+            parts.append("最近生理样本测量于 \(ChineseDateTime.full(latestStressSampledAt))")
+        }
         if let loaded = loader.loadedAt {
-            return "数据来源：Apple 健康 · 更新于 \(ChineseDateTime.full(loaded))"
+            parts.append("本页查询于 \(ChineseDateTime.full(loaded))")
+        } else if let last = health.lastRefreshedAt {
+            parts.append("本页查询于 \(ChineseDateTime.full(last))")
         }
-        if let last = health.lastRefreshedAt {
-            return "数据来源：Apple 健康 · 更新于 \(ChineseDateTime.full(last))"
-        }
-        return "数据来源：Apple 健康"
+        return parts.joined(separator: " · ")
     }
 
     var body: some View {
@@ -137,6 +149,29 @@ struct StressView: View {
             }
             .refreshable { await health.refresh(); await loadAll() }
             .task { await loadAll() }
+            .onChange(of: relevantReadingTimes) { _, _ in
+                scheduleSampleRefresh()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { scheduleSampleRefresh() }
+            }
+            .onDisappear { pendingSampleRefresh?.cancel() }
+        }
+    }
+
+    private func scheduleSampleRefresh() {
+        guard health.hasRequestedAccess else { return }
+        // Coalesce nearby HealthKit changes. A new sample must not be lost
+        // merely because the previous query completed less than a minute ago.
+        pendingSampleRefresh?.cancel()
+        pendingSampleRefresh = Task {
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            while loader.isLoading && !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+            guard !Task.isCancelled else { return }
+            await loader.load()
         }
     }
 
@@ -186,8 +221,8 @@ struct StressView: View {
                 if failedIDs.isEmpty == false {
                     V3ErrorBanner(failedCount: failedIDs.count)
                 }
-                if isStale {
-                    V3StaleBanner(lastUpdated: health.lastRefreshedAt ?? .now)
+                if let latestStressSampledAt {
+                    StaleSamplesNotice(recordedAt: latestStressSampledAt, context: "压力页", maximumAge: 6 * 3600)
                 }
                 hero
                 trendSection
@@ -223,7 +258,7 @@ struct StressView: View {
     private var hero: some View {
         V3Hero {
             VStack(alignment: .leading, spacing: 14) {
-                Label("今日生理负荷", systemImage: "waveform.path.ecg")
+                Label("近期生理压力线索", systemImage: "waveform.path.ecg")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(HealthTheme.v3Muted)
                 Text(estimate.level == .insufficient ? "数据不足" : estimate.level.rawValue)
@@ -231,16 +266,16 @@ struct StressView: View {
                     .foregroundStyle(levelColor(estimate.level))
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
-                Text("基于最近可用的 HRV、心率、呼吸和活动记录估算")
+                Text("基于最近 24 小时可用的 HRV、心率、呼吸和活动记录估算")
                     .font(.subheadline)
                     .foregroundStyle(HealthTheme.v3Muted)
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 10) {
-                        summaryMetric(id: "hrv", title: "今日 HRV", unit: "毫秒", baseline: hrvBaseline)
+                        summaryMetric(id: "hrv", title: "最近 HRV", unit: "毫秒", baseline: hrvBaseline)
                         summaryMetric(id: "restingHeartRate", title: "静息心率", unit: "次/分", baseline: restingBaseline)
                     }
                     VStack(spacing: 10) {
-                        summaryMetric(id: "hrv", title: "今日 HRV", unit: "毫秒", baseline: hrvBaseline)
+                        summaryMetric(id: "hrv", title: "最近 HRV", unit: "毫秒", baseline: hrvBaseline)
                         summaryMetric(id: "restingHeartRate", title: "静息心率", unit: "次/分", baseline: restingBaseline)
                     }
                 }
@@ -276,6 +311,12 @@ struct StressView: View {
             Text(reading.map { ChineseDateTime.full($0.recordedAt) } ?? "暂无记录")
                 .font(.caption2)
                 .foregroundStyle(HealthTheme.v3Muted)
+            if let reading {
+                Text("来源：\(reading.source.isEmpty ? "未知设备" : reading.source)")
+                    .font(.caption2)
+                    .foregroundStyle(HealthTheme.v3Muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)

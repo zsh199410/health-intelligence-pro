@@ -35,13 +35,16 @@
 set -u
 APP_PATH="${1:?usage: capture_watch_screenshot.sh <HealthWatch.app path> <output dir>}"
 OUT_DIR="${2:?usage: capture_watch_screenshot.sh <HealthWatch.app path> <output dir>}"
-BUNDLE_ID="com.example.healthintelligence.watchkitapp"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p "$OUT_DIR"
 
 fail() { echo "FAIL: $1"; exit 1; }
 
 command -v python3 >/dev/null || fail "python3 is required for the screenshot readiness check"
+[ -f "$APP_PATH/Info.plist" ] || fail "Watch app Info.plist is missing"
+BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist") \
+    || fail "could not read Watch app bundle identifier"
+[ -n "$BUNDLE_ID" ] || fail "Watch app bundle identifier is empty"
 
 echo "== watch simulators =="
 xcrun simctl list devices available | grep -i "Apple Watch" || true

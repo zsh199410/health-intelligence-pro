@@ -26,8 +26,9 @@ targets:
         PRODUCT_NAME: HealthIntelligence
         GENERATE_INFOPLIST_FILE: "YES"
         INFOPLIST_KEY_CFBundleDisplayName: "健康中枢"
-        INFOPLIST_KEY_NSHealthShareUsageDescription: "用于读取您选择的心率、睡眠、体征和健康记录，并在本机呈现趋势。"
-        INFOPLIST_KEY_NSHealthUpdateUsageDescription: "仅将您明确输入的血压、血糖和体重写入 Apple 健康。"
+        INFOPLIST_KEY_NSHealthShareUsageDescription: "用于读取您选择的心率、睡眠、心境和健康记录，并在本机呈现趋势。"
+        INFOPLIST_KEY_NSHealthUpdateUsageDescription: "仅将您主动记录的心情、血压、血糖和体重写入 Apple 健康。"
+        INFOPLIST_KEY_NSMotionUsageDescription: "用于在您主动开启当前活动时显示 iPhone 的步数与活动类型。"
         # Launch screen: without a launch screen key iOS runs the app in
         # 16:9 compatibility mode on 19.5:9 phones (black bars top and
         # bottom in screenshots). UILaunchStoryboardName is a plain string
@@ -50,17 +51,23 @@ targets:
     platform: watchOS
     sources:
       - path: Watch
+    info:
+      path: Configuration/Watch-Info.plist
+      properties:
+        WKBackgroundModes:
+          - workout-processing
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.healthintelligence.watchkitapp
+        PRODUCT_BUNDLE_IDENTIFIER: app.rose4354.lettuce4008.watchkitapp
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRODUCT_NAME: HealthWatch
         GENERATE_INFOPLIST_FILE: "YES"
         INFOPLIST_KEY_CFBundleDisplayName: "健康中枢"
         INFOPLIST_KEY_WKWatchKitApp: "YES"
-        INFOPLIST_KEY_WKCompanionAppBundleIdentifier: com.example.healthintelligence
+        INFOPLIST_KEY_WKCompanionAppBundleIdentifier: app.rose4354.lettuce4008
         INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp: "YES"
         INFOPLIST_KEY_NSHealthShareUsageDescription: "在手表端读取您授权的心率、HRV、血氧及呼吸频率。"
+        INFOPLIST_KEY_NSHealthUpdateUsageDescription: "仅在您主动开始训练时将训练记录写入 Apple 健康。"
         WATCHOS_DEPLOYMENT_TARGET: "11.0"
         TARGETED_DEVICE_FAMILY: "4"
     entitlements:

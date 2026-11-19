@@ -268,16 +268,16 @@ struct MetricCard: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(reading.map { $0.recordedAt.formatted(date: .abbreviated, time: .shortened) } ?? emptyText)
+                    Text(reading.map { ChineseDateTime.full($0.recordedAt) } ?? emptyText)
                         .font(.caption2)
                         .foregroundStyle(HealthTheme.v3Muted)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(reading.map { $0.source.isEmpty ? "来源未知" : $0.source } ?? "来源 —")
                         .font(.caption2)
                         .foregroundStyle(HealthTheme.v3Muted)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 if let baselineLine {
                     Text(baselineLine)
@@ -551,7 +551,8 @@ struct SleepStageTimeline: View {
     }
 }
 
-/// Stale data: the last successful refresh is over 24 hours old.
+/// The app has not checked HealthKit for over 24 hours. This banner describes
+/// query freshness, not the age of any individual measurement.
 struct V3StaleBanner: View {
     let lastUpdated: Date
     var body: some View {
@@ -560,10 +561,10 @@ struct V3StaleBanner: View {
                 .foregroundStyle(HealthTheme.v3EnergyText)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text("数据已超过 24 小时未更新")
+                Text("已超过 24 小时未检查健康记录")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(HealthTheme.v3Ink)
-                Text("上次更新于 \(lastUpdated.formatted(date: .abbreviated, time: .shortened))，下拉刷新以获取最新记录。")
+                Text("本机上次检查于 \(ChineseDateTime.full(lastUpdated))，下拉刷新可检查新记录。")
                     .font(HealthTheme.v3AuxFont)
                     .foregroundStyle(HealthTheme.v3Muted)
             }

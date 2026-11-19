@@ -32,7 +32,7 @@ struct RootView: View {
             RecordsView().tabItem { Label("健康库", systemImage: "cross.case.fill") }.tag(3)
             ReportView().tabItem { Label("报告", systemImage: "doc.text.image.fill") }.tag(4)
         }
-        .tint(HealthTheme.teal)
+        .tint(HealthTheme.v4Accent)
         .preferredColorScheme(resolvedColorScheme)
         .dynamicTypeSizeIfPresent(ThemeResolver.forcedDynamicTypeSize)
         .animation(themeAnimation, value: resolvedColorScheme)
