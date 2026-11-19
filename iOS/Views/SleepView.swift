@@ -76,6 +76,7 @@ struct SleepView: View {
     private var pageHeading: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("睡眠")
+                .accessibilityIdentifier("screen-sleep-title")
                 .font(HealthTheme.v3TitleFont)
                 .foregroundStyle(HealthTheme.v3Ink)
             Text("最近 36 小时的已有分期记录")
@@ -83,7 +84,6 @@ struct SleepView: View {
                 .foregroundStyle(HealthTheme.v3Muted)
         }
         .padding(.horizontal, 2)
-        .accessibilityElement(children: .combine)
     }
 
     private var stateContent: some View {

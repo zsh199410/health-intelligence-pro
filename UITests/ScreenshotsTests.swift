@@ -58,7 +58,7 @@ final class ScreenshotsTests: XCTestCase {
         app.buttons["跳过"].tap()
 
         // 2/7 today.
-        XCTAssertTrue(app.staticTexts["读懂身体的每一天"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["screen-today-title"].waitForExistence(timeout: 10))
         capture("today", prefix: prefix)
 
         // 3/7 settings (gear on Today, dismissed with 完成).
@@ -66,11 +66,11 @@ final class ScreenshotsTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["设置与隐私"].waitForExistence(timeout: 10))
         capture("settings", prefix: prefix)
         app.buttons["完成"].tap()
-        XCTAssertTrue(app.staticTexts["读懂身体的每一天"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["screen-today-title"].waitForExistence(timeout: 10))
 
         // 4/7 sleep.
         tapTab("睡眠")
-        XCTAssertTrue(app.staticTexts["睡眠，是身体的修复时间"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["screen-sleep-title"].waitForExistence(timeout: 10))
         capture("sleep", prefix: prefix)
 
         // 5/7 heart.
@@ -110,13 +110,13 @@ final class ScreenshotsTests: XCTestCase {
         // is interactive by opening Settings from the toolbar and
         // returning.
         tapTab("今日")
-        XCTAssertTrue(app.staticTexts["读懂身体的每一天"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["screen-today-title"].waitForExistence(timeout: 10))
         let settingsButton = app.buttons["设置与隐私"]
         XCTAssertTrue(settingsButton.waitForExistence(timeout: 10), "settings button missing")
         settingsButton.tap()
         XCTAssertTrue(app.staticTexts["设置与隐私"].waitForExistence(timeout: 10), "settings sheet missing")
         app.buttons["完成"].tap()
-        XCTAssertTrue(app.staticTexts["读懂身体的每一天"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["screen-today-title"].waitForExistence(timeout: 10))
     }
 
     private func tapTab(_ label: String) {

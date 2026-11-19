@@ -91,6 +91,40 @@ final class SleepSessionTests: XCTestCase {
         XCTAssertTrue(SleepSession.latestIntervals(from: []).isEmpty)
     }
 
+
+    func testExactlyTwoHourGapStartsNewSession() {
+        let earlier = interval(0, 3_600)
+        let later = interval(3_600 + 7_200, 3_600 + 10_800, stage: .rem)
+        XCTAssertEqual(SleepSession.window(from: [later, earlier]), later.start...later.end)
+        XCTAssertEqual(SleepSession.latestIntervals(from: [later, earlier]).map(\.start), [later.start])
+    }
+
+    func testGapJustBelowThresholdKeepsOneSession() {
+        let earlier = interval(0, 3_600)
+        let later = interval(3_600 + 7_199, 3_600 + 10_799)
+        XCTAssertEqual(SleepSession.window(from: [later, earlier]), earlier.start...later.end)
+        XCTAssertEqual(SleepSession.latestIntervals(from: [later, earlier]).count, 2)
+    }
+
+    func testLatestSessionIgnoresInvalidIntervalsAfterValidNight() {
+        let valid = interval(0, 3_600)
+        let invalid = interval(100_000, 90_000)
+        XCTAssertEqual(SleepSession.window(from: [invalid, valid]), valid.start...valid.end)
+        XCTAssertEqual(SleepSession.latestIntervals(from: [invalid, valid]).map(\.start), [valid.start])
+    }
+
+    func testSessionWindowUsesAbsoluteTimeAcrossDaylightSavingTransition() {
+        // Date values represent absolute instants. A local DST jump must not
+        // split a contiguous session or fabricate a missing hour.
+        let beforeJump = interval(0, 3_600)
+        let afterJump = interval(3_600, 7_200, stage: .deep)
+        XCTAssertEqual(SleepSession.window(from: [afterJump, beforeJump]),
+                       beforeJump.start...afterJump.end)
+        XCTAssertEqual(SleepCalculator.summarize(
+            SleepSession.latestIntervals(from: [afterJump, beforeJump])
+        ).totalAsleepMinutes, 120)
+    }
+
     func testInvalidIntervalsAreIgnored() {
         let bad = SleepInterval(start: Date(timeIntervalSince1970: 1_700_003_600),
                                 end: Date(timeIntervalSince1970: 1_700_000_000), stage: .core)
