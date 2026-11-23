@@ -46,11 +46,10 @@ struct WelcomeHealthView: View {
                         disabled: !health.isHealthAvailable
                     ) {
                         Task {
-                            await health.connectAndRefresh()
-                            // Do not mark onboarding complete if HealthKit authorization
-                            // threw. Keep the explanation and retry/skip controls visible.
-                            // A completed authorization request does not prove read access.
-                            if health.hasRequestedAccess {
+                            // Use this invocation's result, not a historical access flag.
+                            // Request success does not imply HealthKit read permission.
+                            let requestCompleted = await health.connectAndRefresh()
+                            if requestCompleted {
                                 complete()
                             }
                         }
