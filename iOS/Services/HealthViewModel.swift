@@ -30,14 +30,19 @@ final class HealthViewModel: ObservableObject {
     var isHealthAvailable: Bool { repository.isAvailable }
     var insights: [HealthInsight] { InsightEngine.insights(readings: readings, sleep: sleep) }
 
-    func connectAndRefresh() async {
-        guard !isLoading else { return }
+    /// True only when this invocation completed the HealthKit authorization request.
+    /// This does not indicate which read permissions the user granted.
+    @discardableResult
+    func connectAndRefresh() async -> Bool {
+        guard !isLoading, repository.isAvailable else { return false }
         do {
             try await repository.requestAccess()
             hasRequestedAccess = true
             await refresh()
+            return true
         } catch {
             message = "健康访问请求失败：\(error.localizedDescription)"
+            return false
         }
     }
 
