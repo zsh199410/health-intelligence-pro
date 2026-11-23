@@ -39,6 +39,34 @@ struct HeartView: View {
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("heart-latest-reading")
                     }
+                    NavigationLink {
+                        CardiovascularRecoveryView()
+                    } label: {
+                        HealthCard {
+                            HStack(spacing: 14) {
+                                Image(systemName: "heart.text.clipboard.fill")
+                                    .font(.title2)
+                                    .foregroundStyle(HealthTheme.coral)
+                                    .frame(width: 44, height: 44)
+                                    .background(HealthTheme.coral.opacity(0.10),
+                                                in: RoundedRectangle(cornerRadius: 14))
+                                    .accessibilityHidden(true)
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text("心血管恢复观察")
+                                        .font(.headline).foregroundStyle(HealthTheme.ink)
+                                    Text("运动后心率恢复、HRV、静息心率与心肺适能")
+                                        .font(.subheadline).foregroundStyle(HealthTheme.muted)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Spacer(minLength: 4)
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(HealthTheme.muted)
+                                    .accessibilityHidden(true)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("heart-recovery-entry")
                     SectionHeadline(title: "其他心血管指标", subtitle: "每项显示测量时间与来源；点击查看历史")
                     LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(metricIDs, id: \.self) { id in
