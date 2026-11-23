@@ -47,7 +47,12 @@ struct WelcomeHealthView: View {
                     ) {
                         Task {
                             await health.connectAndRefresh()
-                            complete()
+                            // Do not mark onboarding complete if HealthKit authorization
+                            // threw. Keep the explanation and retry/skip controls visible.
+                            // A completed authorization request does not prove read access.
+                            if health.hasRequestedAccess {
+                                complete()
+                            }
                         }
                     }
                     .accessibilityHint("打开苹果健康访问授权弹窗")
