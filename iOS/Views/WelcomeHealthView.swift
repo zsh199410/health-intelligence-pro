@@ -46,8 +46,12 @@ struct WelcomeHealthView: View {
                         disabled: !health.isHealthAvailable
                     ) {
                         Task {
-                            await health.connectAndRefresh()
-                            complete()
+                            // Use this invocation's result, not a historical access flag.
+                            // Request success does not imply HealthKit read permission.
+                            let requestCompleted = await health.connectAndRefresh()
+                            if requestCompleted {
+                                complete()
+                            }
                         }
                     }
                     .accessibilityHint("打开苹果健康访问授权弹窗")
