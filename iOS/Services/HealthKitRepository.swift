@@ -84,11 +84,10 @@ final class HealthKitRepository {
 
     /// One aggregated point per calendar day. This avoids silently truncating
     /// high-frequency Series 12 readings after an arbitrary 120 raw samples.
-    func trend(_ metric: HealthMetric, days: Int = 30) async throws -> [TrendPoint] {
-        let calendar = Calendar.current
-        let anchor = calendar.startOfDay(for: Date())
-        guard let start = calendar.date(byAdding: .day, value: -(max(2, days) - 1), to: anchor) else { return [] }
-        let end = Date()
+    func trend(_ metric: HealthMetric, days: Int = 30, endingAt end: Date = Date(),
+               calendar: Calendar = .current) async throws -> [TrendPoint] {
+        let anchor = calendar.startOfDay(for: end)
+        guard let start = calendar.date(byAdding: .day, value: -(max(1, days) - 1), to: anchor) else { return [] }
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
         let option: HKStatisticsOptions = metric.aggregation == .sumToday ? .cumulativeSum : .discreteAverage
         return try await withCheckedThrowingContinuation { continuation in

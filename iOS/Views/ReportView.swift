@@ -6,6 +6,16 @@ struct ReportView: View {
     @State private var exportURL: URL?
     @State private var exportError: String?
     @State private var exportState: PrimaryButtonState = .idle
+    @State private var period = ReportPeriod.week
+    @State private var periodReport: PeriodHealthReport?
+    @State private var retry = 0
+
+    private struct LoadKey: Equatable {
+        let period: ReportPeriod
+        let refreshed: Date?
+        let retry: Int
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -22,7 +32,26 @@ struct ReportView: View {
                                 .font(.system(size: 38)).foregroundStyle(.white.opacity(0.8))
                         }
                     }
-                    SectionHeadline(title: "本次健康观察", subtitle: "使用已读取数据的可解释规则")
+                    SectionHeadline(title: "时段报告", subtitle: "本机 Apple 健康 · 统计至本次读取时刻")
+                    Picker("报告时段", selection: $period) {
+                        Text("今日").tag(ReportPeriod.day)
+                        Text("近 7 天").tag(ReportPeriod.week)
+                        Text("近 30 天").tag(ReportPeriod.month)
+                    }.pickerStyle(.segmented)
+                    if let report = periodReport, report.period == period {
+                        Text(report.rangeText).font(.footnote)
+                        ForEach(report.rows) { row in
+                            VStack(alignment: .leading, spacing: 4) {
+                                LabeledContent(row.name, value: row.result)
+                                Text(row.detail).font(.caption).foregroundStyle(.secondary)
+                            }.accessibilityElement(children: .combine)
+                        }
+                        Text("缺失日期不计入汇总。今天仅统计至读取时刻。").font(.footnote)
+                        Button("重新读取时段数据") { retry += 1 }
+                    } else {
+                        ProgressView("正在读取时段数据")
+                    }
+                    SectionHeadline(title: "最近记录观察", subtitle: "以下观察依据最近一次刷新，可包含所选时段之前的记录")
                     ForEach(health.insights) { insight in
                         HealthCard {
                             VStack(alignment: .leading, spacing: 9) {
@@ -44,7 +73,8 @@ struct ReportView: View {
                         state: exportState
                     ) {
                         do {
-                            exportURL = try PDFReportExporter.export(readings: health.readings,
+                            guard let report = periodReport, report.period == period else { return }
+                            exportURL = try PDFReportExporter.export(periodReport: report, readings: health.readings,
                                                                      sleep: health.sleep,
                                                                      insights: health.insights,
                                                                      failedMetricIDs: health.failedMetricIDs)
@@ -54,6 +84,7 @@ struct ReportView: View {
                             exportState = .failure
                         }
                     }
+                    .disabled(periodReport?.period != period)
                     if let exportURL {
                         ShareLink(item: exportURL) {
                             Label("分享本次 PDF 报告", systemImage: "doc.richtext")
@@ -69,6 +100,16 @@ struct ReportView: View {
                         }
                     }
                 }.padding(18)
+            }
+            .task(id: LoadKey(period: period, refreshed: health.lastRefreshedAt, retry: retry)) {
+                periodReport = nil
+                exportURL = nil
+                exportState = .idle
+                do {
+                    let report = try await PeriodHealthReport.read(period: period, repository: HealthKitRepository())
+                    try Task.checkCancellation()
+                    periodReport = report
+                } catch { /* A new selection or navigation cancels the old report. */ }
             }
             .background(HealthTheme.canvas.ignoresSafeArea())
             .navigationTitle("健康报告")

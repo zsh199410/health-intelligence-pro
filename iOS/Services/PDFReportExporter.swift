@@ -4,7 +4,7 @@ import HealthCore
 
 @MainActor
 enum PDFReportExporter {
-    static func export(readings: [String: MetricReading], sleep: SleepSummary?,
+    static func export(periodReport: PeriodHealthReport, readings: [String: MetricReading], sleep: SleepSummary?,
                        insights: [HealthInsight], failedMetricIDs: [String] = []) throws -> URL {
         let generatedAt = Date()
         let destination = FileManager.default.temporaryDirectory
@@ -14,7 +14,7 @@ enum PDFReportExporter {
             context.beginPage()
             let margin: CGFloat = 42
             var cursor: CGFloat = 48
-            func draw(_ text: String, size: CGFloat, bold: Bool = false, tint: UIColor = .label) {
+            func draw(_ text: String, size: CGFloat, bold: Bool = false, tint: UIColor = .black) {
                 let font: UIFont = bold ? .boldSystemFont(ofSize: size) : .systemFont(ofSize: size)
                 let style = NSMutableParagraphStyle(); style.lineBreakMode = .byWordWrapping
                 let attributes: [NSAttributedString.Key: Any] = [
@@ -34,10 +34,16 @@ enum PDFReportExporter {
             }
             draw("健康中枢 · 个人健康摘要", size: 22, bold: true)
             draw("生成于 \(generatedAt.formatted(date: .complete, time: .shortened)) · 来自本机 HealthKit 记录", size: 10)
+            draw("时段报告 · Apple 健康日统计", size: 16, bold: true)
+            draw(periodReport.rangeText, size: 11)
+            for row in periodReport.rows {
+                draw("\(row.name) · \(row.result) · \(row.detail)", size: 11)
+            }
+            draw("最近记录快照（独立于上述统计时段）", size: 16, bold: true)
             if let earliest = readings.values.map(\.recordedAt).min() {
-                draw("统计窗口：\(earliest.formatted(date: .abbreviated, time: .shortened)) – \(generatedAt.formatted(date: .abbreviated, time: .shortened))", size: 10)
+                draw("快照范围：\(earliest.formatted(date: .abbreviated, time: .shortened)) – \(generatedAt.formatted(date: .abbreviated, time: .shortened))", size: 10)
             } else {
-                draw("统计窗口：没有可用记录", size: 10)
+                draw("快照范围：没有可用记录", size: 10)
             }
             draw("仅供个人健康趋势整理，不用于医学诊断、急救决策或代替专业建议。", size: 10)
             cursor += 8
@@ -45,9 +51,9 @@ enum PDFReportExporter {
             if readings.isEmpty { draw("暂无可读取数据。", size: 12) }
             for metric in HealthCatalog.all {
                 guard let value = readings[metric.id] else { continue }
-                draw("\(metric.name)：\(metric.display(value.value)) \(value.unit)  [\(value.recordedAt.formatted(date: .abbreviated, time: .shortened))]", size: 11)
+                draw("\(metric.name)：\(metric.display(value.value)) \(value.unit)  [\(value.recordedAt.formatted(date: .abbreviated, time: .shortened))]  \(value.source)", size: 11)
             }
-            let missing = HealthCatalog.all.filter { readings[$0.id] == nil }
+            let missing = HealthCatalog.all.filter { readings[$0.id] == nil && !failedMetricIDs.contains($0.id) }
             if !missing.isEmpty {
                 draw("缺失的指标（共 \(missing.count) 项，没有可用记录）", size: 13, bold: true)
                 draw("没有可用记录不代表指标正常，可能是未授权、未测量或设备不支持。HealthKit 读取为空不能据此推断授权状态。", size: 10)
