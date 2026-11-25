@@ -55,3 +55,9 @@ Issue #2 正文的首次可安装门槛有历史用户确认与 Muse 包记录�
 **原提交 CI 终态。** `65a44bb` 的 Run 205 全部成功，核心测试、iOS/watchOS 模拟器构建、截图 UI 测试、截图尺寸核对、Watch 截图及截图集校验均通过。该运行没有失败项。[Run 205](https://github.com/zsh199410/health-intelligence-pro/actions/runs/45551360874)
 
 **候选与实验分支 CI 终态。** Build 21、Build 22 及 PPG 实验分支各自的 macOS 核心测试和双端模拟器构建均通过，iPhone 多页面截图、Watch 截图和完整截图集校验通过。PPG 真机光学采集与手表记录匹配仍需设备验证。[Build 21 CI](https://github.com/zsh199410/health-intelligence-pro/actions/runs/45552086702) · [Build 22 CI](https://github.com/zsh199410/health-intelligence-pro/actions/runs/45552674194) · [PPG CI](https://github.com/zsh199410/health-intelligence-pro/actions/runs/45552313724)
+
+## ECG / PPG 核心交接
+
+- ECG 提交 `89feca2b32eaa141bf8df4ee25a02b79453b20a3`，基于 Build 23 源码 `5ca1750`。单导联原始电压和时间戳保存在当前详情，概览按区间极值抽取、按采样间断分段。28 项核心 XCTest 通过，新增 3 项专测；iOS 改动通过 Swift 语法解析。
+- PPG 分支 `codex/phase3-waveform` 提交 `07d77b6f0a3c4e19cc8f4792db02429bc2f551dc`，算法及时间对齐的 31 项核心 XCTest 通过。历史手表读数显示时间差，脉率和脉搏间期仅作实验。
+- GPT 审查窄峰保真、缺帧阈值与光学信号拒测条件。Muse 在 S12 样本上对照原始时间戳、波形及参考逐搏间期，并复核 Apple SDK 和截图。Build 23 曾出现截图 UI 测试退出 65，发布验收仍待处理。[CI 记录](https://github.com/zsh199410/health-intelligence-pro/actions/runs/45594178043)
