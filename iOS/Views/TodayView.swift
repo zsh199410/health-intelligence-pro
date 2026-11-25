@@ -1,13 +1,8 @@
 import SwiftUI
 import HealthCore
 
-/// V3 Home page (Today). iPhone only; Apple Watch is P5.
-/// Shows real HealthKit data or clearly labeled estimates. Never hardcodes
-/// demo scores. The hero ring is DATA COVERAGE (modules with data / 5),
-/// labeled as an estimate — it is not a health score and not a diagnosis.
-/// The five module rings show data coverage too (inputs present / inputs
-/// expected). Levels describe data freshness, never a diagnosis.
 struct TodayView: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
     @EnvironmentObject private var health: HealthViewModel
     @AppStorage("themePreference") private var themePreference: AppThemePreference = .system
     @State private var showSettings = false
@@ -32,7 +27,7 @@ struct TodayView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     pageHeading
-                    hero
+                    if !hasNoData { hero }
                     stateContent
                     footer
                 }
@@ -66,19 +61,10 @@ struct TodayView: View {
 
     private var pageHeading: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("HEALTH INTELLIGENCE")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .tracking(2)
-                    .foregroundStyle(HealthTheme.v3BrandText)
-                Spacer()
-                V3Pill(title: "本机私密", icon: "lock.shield.fill")
-            }
             Text("读懂身体的每一天")
-                .font(HealthTheme.v3TitleFont)
+                .font(.largeTitle.bold())
                 .foregroundStyle(HealthTheme.v3Ink)
-                .minimumScaleFactor(0.85)
-            Text(Date.now.formatted(.dateTime.year().month(.wide).day().weekday(.wide)))
+            Text(Date.now.formatted(.dateTime.year().month(.wide).day().weekday(.wide).locale(Locale(identifier: "zh_CN"))))
                 .font(.subheadline)
                 .foregroundStyle(HealthTheme.v3Muted)
         }
@@ -88,75 +74,46 @@ struct TodayView: View {
     private var hero: some View {
         V3Hero {
             VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 8) {
-                    Text("HEALTH SNAPSHOT")
-                        .font(.caption2.weight(.bold))
-                        .tracking(2)
-                        .foregroundStyle(HealthTheme.v3Muted)
-                    Spacer()
-                    V3Pill(title: "估算", icon: "info.circle.fill")
+                if let sample = latestVital, let metric = HealthCatalog.byID[sample.id] {
+                    Label("最近一次生命体征记录", systemImage: "waveform.path.ecg")
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(HealthTheme.v3BrandText)
+                    Text(metric.name).font(.headline)
+                    Text("\(metric.display(sample.value)) \(sample.unit)")
+                        .font(.largeTitle.bold()).monospacedDigit()
+                    Text("\(sample.recordedAt.formatted(sampleDateStyle)) · \(sample.source)")
+                        .font(.subheadline).foregroundStyle(HealthTheme.v3Muted)
+                    let status = freshness(of: sample.recordedAt)
+                    Text(status.0).font(.footnote.weight(.semibold)).foregroundStyle(status.1)
+                } else if let window = health.sleepWindow, health.sleep != nil {
+                    Label("最近一次睡眠", systemImage: "moon.zzz.fill")
+                        .font(.headline).foregroundStyle(HealthTheme.v3SleepText)
+                    Text(sleepDurationText).font(.largeTitle.bold()).monospacedDigit()
+                    Text("\(window.lowerBound.formatted(sampleDateStyle)) 至 \(window.upperBound.formatted(sampleDateStyle))")
+                        .font(.subheadline).foregroundStyle(HealthTheme.v3Muted)
+                } else {
+                    Text("健康记录概览").font(.title2.bold())
                 }
-                Text("今日综合状态")
-                    .font(HealthTheme.v3HeadlineFont)
-                    .foregroundStyle(HealthTheme.v3Ink)
-                HStack(alignment: .center, spacing: 16) {
-                    StatusRing(
-                        progress: heroCoverage, color: HealthTheme.v3Brand,
-                        center: "\(modulesWithData)/5", caption: "模块", size: 104, lineWidth: 10
-                    )
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("已读取 \(health.readings.count) 项指标")
-                            .font(.headline)
-                            .foregroundStyle(HealthTheme.v3Ink)
-                        Text("\(modulesWithData)/5 个模块有数据")
-                            .font(.subheadline)
-                            .foregroundStyle(HealthTheme.v3Muted)
-                        Text(health.lastRefreshedAt.map { "数据更新于 \($0.formatted(date: .omitted, time: .shortened))" } ?? "尚未读取")
-                            .font(HealthTheme.v3AuxFont)
-                            .foregroundStyle(HealthTheme.v3Muted)
-                    }
-                }
-                quickStats
-                Text("综合状态为估算，基于已读取的数据，不是医疗诊断。")
-                    .font(HealthTheme.v3AuxFont)
-                    .foregroundStyle(HealthTheme.v3Muted)
+                Divider()
+                Text("已读取 \(health.readings.count) 项指标 · \(modulesWithData)/5 个模块有记录")
+                    .font(.subheadline).foregroundStyle(HealthTheme.v3Muted)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    private var quickStats: some View {
-        HStack(spacing: 8) {
-            quickStat(label: "睡眠", value: sleepDurationText)
-            Divider().frame(height: 36)
-            quickStat(label: "静息心率", value: readingText("restingHeartRate"))
-            Divider().frame(height: 36)
-            quickStat(label: "HRV", value: readingText("hrv"))
-        }
-        .padding(12)
-        .background(HealthTheme.v3SurfaceSecondary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    private var sampleDateStyle: Date.FormatStyle {
+        .dateTime.year().month().day().hour().minute().locale(Locale(identifier: "zh_CN"))
     }
 
-    private func quickStat(label: String, value: String) -> some View {
-        // Labels use ink (not muted) here: muted text is 4.45:1 on the
-        // secondary background, just below the 4.5:1 bar.
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label)
-                .font(HealthTheme.v3AuxFont)
-                .foregroundStyle(HealthTheme.v3Ink)
-            Text(value)
-                .font(.headline)
-                .foregroundStyle(HealthTheme.v3Ink)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    private var latestVital: MetricReading? {
+        (["heartRate"] + primary).compactMap { health.readings[$0] }.max { $0.recordedAt < $1.recordedAt }
     }
 
     @ViewBuilder
     private var stateContent: some View {
         if health.isLoading && hasNoData {
             V3LoadingView()
-        } else if health.hasRequestedAccess == false {
+        } else if hasNoData && !health.hasRequestedAccess && health.failedMetricIDs.isEmpty {
             permissionCard
         } else if hasNoData && health.failedMetricIDs.isEmpty {
             V3EmptyStateView(
@@ -176,8 +133,8 @@ struct TodayView: View {
             if isStale {
                 V3StaleBanner(lastUpdated: health.lastRefreshedAt ?? .now)
             }
-            modulesSection
             vitalsSection
+            modulesSection
             insightsSection
         }
     }
@@ -229,22 +186,12 @@ struct TodayView: View {
     private var vitalsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             V3SectionHeadline(title: "核心生命体征", subtitle: "数据直接来自 Apple 健康")
-            // Eager 2-column grid, not LazyVGrid: all four tiles are in
-            // the view hierarchy from the start, so UI tests can find
-            // them without first scrolling the LazyVGrid into view
-            // (five straight CI failures proved neither app.swipeUp()
-            // nor scrollView.swipeUp() moves this page in the test
-            // environment). Only four items, so there is no
-            // performance cost; layout is identical to the lazy grid
-            // (two equal-width columns, 16pt spacing).
-            VStack(spacing: 16) {
-                HStack(spacing: 16) {
-                    vitalTile(id: primary[0])
-                    vitalTile(id: primary[1])
-                }
-                HStack(spacing: 16) {
-                    vitalTile(id: primary[2])
-                    vitalTile(id: primary[3])
+            if typeSize.isAccessibilitySize {
+                ForEach(primary, id: \.self) { id in vitalTile(id: id) }
+            } else {
+                Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+                    GridRow { vitalTile(id: primary[0]); vitalTile(id: primary[1]) }
+                    GridRow { vitalTile(id: primary[2]); vitalTile(id: primary[3]) }
                 }
             }
         }
@@ -290,13 +237,6 @@ struct TodayView: View {
     // MARK: - Module data (real readings only, no fabricated scores)
 
     private var modulesWithData: Int { modules.filter { $0.presentCount > 0 }.count }
-
-    private var heroCoverage: Double { Double(modulesWithData) / 5.0 }
-
-    private func readingText(_ id: String) -> String {
-        guard let metric = HealthCatalog.byID[id], let reading = health.readings[id] else { return "—" }
-        return "\(metric.display(reading.value)) \(metric.unitText)"
-    }
 
     private var sleepDurationText: String {
         guard let sleep = health.sleep, sleep.totalAsleepMinutes > 0 else { return "—" }
