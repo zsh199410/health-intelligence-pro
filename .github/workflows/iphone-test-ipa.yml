@@ -85,6 +85,11 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
             "dist/Payload/HealthIntelligence.app/Info.plist" | tee dist/bundle-id.txt
 
+          plist="dist/Payload/HealthIntelligence.app/Info.plist"
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")
+          build=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")
+          test -n "$version" && test -n "$build"
+
           (
             cd dist
             ditto -c -k --sequesterRsrc --keepParent Payload \
@@ -101,6 +106,7 @@ jobs:
             'Use a matching bundle identifier and check the final signed entitlements.' \
             'Never upload P12, its password, or provisioning profiles to this public repository.' \
             'A successful unsigned build does not verify HealthKit access or on-device launch.' \
+            "Version: $version ($build)" \
             "Source commit: ${GITHUB_SHA}" \
             > dist/README-SIGN-BEFORE-INSTALL.txt
           ls -lh dist/HealthIntelligence-iPhone-UNSIGNED.ipa dist/SHA256SUMS.txt
