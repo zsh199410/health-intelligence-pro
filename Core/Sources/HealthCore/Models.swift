@@ -66,12 +66,14 @@ public struct ECGSummary: Codable, Identifiable, Sendable {
     public let recordedAt: Date
     public let classification: String
     public let averageHeartRate: Double?
+    public let source: String?
 
-    public init(id: UUID, recordedAt: Date, classification: String, averageHeartRate: Double?) {
+    public init(id: UUID, recordedAt: Date, classification: String, averageHeartRate: Double?, source: String? = nil) {
         self.id = id
         self.recordedAt = recordedAt
         self.classification = classification
         self.averageHeartRate = averageHeartRate
+        self.source = source
     }
 }
 
