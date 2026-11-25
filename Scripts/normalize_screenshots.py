@@ -17,7 +17,8 @@ missing files, corrupt PNGs, unexpected names or wrong sizes all fail
 loudly. The original xcresult and the export manifest are kept as
 evidence; nothing is deleted.
 
-Usage: normalize_screenshots.py <screenshots dir>
+Usage: normalize_screenshots.py <screenshots dir> [--with-ppg]
+With --with-ppg the separately named light-ppg-idle screenshot is required too.
 Exit 0 only when all 21 normalized files exist and verify.
 """
 import json
@@ -30,7 +31,7 @@ import zlib
 
 NAME_RE = re.compile(
     r"^(light|dark|large-text)-"
-    r"(welcome|today|settings|sleep|heart|records|report)_"
+    r"(welcome|today|settings|sleep|heart|records|report|ppg-idle)_"
 )
 EXPECTED = {
     (mode, page)
@@ -72,9 +73,11 @@ def png_size(path):
 
 
 def main(argv):
-    if len(argv) != 2:
-        print("usage: normalize_screenshots.py <screenshots dir>")
+    with_ppg = argv[2:] == ["--with-ppg"]
+    if len(argv) != 2 and not with_ppg:
+        print("usage: normalize_screenshots.py <screenshots dir> [--with-ppg]")
         return 2
+    expected = EXPECTED | ({("light", "ppg-idle")} if with_ppg else set())
     directory = argv[1]
     manifest_path = os.path.join(directory, "manifest.json")
     if not os.path.isfile(manifest_path):
@@ -93,16 +96,18 @@ def main(argv):
             if not match:
                 continue
             key = (match.group(1), match.group(2))
+            if key[1] == "ppg-idle" and not with_ppg:
+                continue
             if key in found:
                 fail(f"duplicate screenshot for {key[0]}-{key[1]}: "
                      f"{found[key][0]} and {exported}")
             found[key] = (exported, human)
 
-    missing = EXPECTED - set(found)
+    missing = expected - set(found)
     if missing:
         fail("missing screenshots: " + ", ".join(
             sorted(f"{m}-{p}" for m, p in missing)))
-    unexpected = set(found) - EXPECTED
+    unexpected = set(found) - expected
     if unexpected:
         fail("unexpected screenshots: " + ", ".join(
             sorted(f"{m}-{p}" for m, p in unexpected)))
@@ -116,7 +121,7 @@ def main(argv):
         print(f"{exported} -> {mode}-{page}.png  (from {human})")
 
     print("== verify normalized set ==")
-    for mode, page in sorted(EXPECTED):
+    for mode, page in sorted(expected):
         path = os.path.join(directory, f"{mode}-{page}.png")
         width, height = png_size(path)
         if (width, height) != EXPECTED_SIZE:
@@ -124,7 +129,7 @@ def main(argv):
                  f"expected {EXPECTED_SIZE[0]}x{EXPECTED_SIZE[1]} "
                  f"(iPhone 17 Pro full screen)")
         print(f"{mode}-{page}.png: {width}x{height} OK")
-    print("OK: 21 screenshots normalized and verified")
+    print(f"OK: {len(expected)} screenshots normalized and verified")
     return 0
 
 

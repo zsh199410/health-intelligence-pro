@@ -64,8 +64,8 @@ jobs:
               || echo "xcresulttool export failed, the xcresult is still uploaded below"
             # xcresulttool writes UUID file names; normalize them to
             # <mode>-<page>.png via the export manifest (copies only,
-            # sources kept) and verify all 21 decode at 1206x2622.
-            python3 Scripts/normalize_screenshots.py screenshots
+            # sources kept) and verify all 22 decode at 1206x2622.
+            python3 Scripts/normalize_screenshots.py screenshots --with-ppg
           fi
           find screenshots -type f -name '*.png' | sort
       - name: Cross-check full-screen capture
@@ -97,8 +97,8 @@ jobs:
         run: |
           echo "== files =="
           find screenshots -type f | sort
-          echo "== normalized iPhone set (expect 21 at 1206x2622) =="
-          python3 Scripts/normalize_screenshots.py screenshots
+          echo "== normalized iPhone set (expect 22 at 1206x2622) =="
+          python3 Scripts/normalize_screenshots.py screenshots --with-ppg
           echo "== watch manifest (strict JSON, numeric pids, real shots) =="
           python3 Scripts/verify_watch_manifest.py screenshots
           echo "== simctl cross-check =="

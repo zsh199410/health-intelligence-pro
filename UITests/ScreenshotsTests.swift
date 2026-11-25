@@ -34,6 +34,28 @@ final class ScreenshotsTests: XCTestCase {
         captureAllPages(prefix: "large-text")
     }
 
+    func testPPGIdleScreenshot() {
+        launch(light: true, largeText: false)
+        let skip = app.buttons["跳过"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 10))
+        skip.tap()
+        let settings = app.buttons["设置与隐私"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 10))
+        settings.tap()
+        XCTAssertTrue(app.navigationBars["设置与隐私"].waitForExistence(timeout: 10))
+        let ppg = app.buttons["指尖脉搏信号采集"]
+        for _ in 0..<5 {
+            if ppg.exists && ppg.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(ppg.isHittable)
+        ppg.tap()
+        XCTAssertTrue(app.navigationBars["指尖脉搏信号"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["开始采集"].exists)
+        XCTAssertTrue(app.staticTexts["采集状态，等待开始采集"].exists)
+        capture("ppg-idle", prefix: "light")
+    }
+
     private func launch(light: Bool, largeText: Bool) {
         app = XCUIApplication()
         // Force the app process into light/dark via launch argument.
