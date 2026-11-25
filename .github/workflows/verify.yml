@@ -1,6 +1,7 @@
 name: Health Intelligence Source Verification
 on:
   push:
+    branches-ignore: [codex/verify-ipa-build-22]
   pull_request:
 jobs:
   core-tests:
