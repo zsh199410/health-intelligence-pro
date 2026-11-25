@@ -3,11 +3,16 @@ import Combine
 import HealthCore
 
 /// Session, capture state and sample callbacks are confined to one serial queue.
-/// Only status text and button state are published on the main thread.
+/// Presentation snapshots are published on the main thread.
 final class PPGCameraCapture: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     @Published private(set) var message = "等待开始采集"
     @Published private(set) var busy = false
 
+    @Published private(set) var waveform: [PPGCameraFrame] = []
+    @Published private(set) var estimate: PPGPulseEstimator.Estimate?
+
+    private var lastPreviewTime: Double?
+    private var contactFrames = 0
     private let queue = DispatchQueue(label: "health.ppg.capture")
     private var captureID: UUID?
     private var session: AVCaptureSession?
@@ -20,6 +25,12 @@ final class PPGCameraCapture: NSObject, ObservableObject, AVCaptureVideoDataOutp
             guard self.captureID == nil else { return }
             let id = UUID()
             self.captureID = id
+            self.contactFrames = 0
+            self.lastPreviewTime = nil
+            DispatchQueue.main.async {
+                self.waveform = []
+                self.estimate = nil
+            }
             self.publish("等待相机权限", busy: true)
             AVCaptureDevice.requestAccess(for: .video) { allowed in
                 self.queue.async {
@@ -80,7 +91,18 @@ final class PPGCameraCapture: NSObject, ObservableObject, AVCaptureVideoDataOutp
         publish("采集中，请保持手指静止。", busy: true)
         queue.asyncAfter(deadline: .now() + 12) { [weak self] in
             guard let self, self.captureID == id else { return }
-            self.finish(self.description(for: PPGCaptureQuality.assess(self.frames)))
+            let quality = PPGCaptureQuality.assess(self.frames)
+            guard quality == .readyForAnalysis else { self.finish(self.description(for: quality)); return }
+            guard Double(self.contactFrames) >= 0.90 * Double(self.frames.count) else {
+                self.finish("指尖覆盖信号不稳定，请调整位置后重测。")
+                return
+            }
+            guard let estimate = PPGPulseEstimator.estimate(self.frames) else {
+                self.finish("未提取到足够稳定的脉搏间期，请保持静止后重测。")
+                return
+            }
+            DispatchQueue.main.async { self.estimate = estimate }
+            self.finish("已完成本次光学采集。")
         }
     }
 
@@ -100,21 +122,38 @@ final class PPGCameraCapture: NSObject, ObservableObject, AVCaptureVideoDataOutp
         let height = CVPixelBufferGetHeight(buffer)
         let rowBytes = CVPixelBufferGetBytesPerRow(buffer)
         var sum = 0
+        var green = 0
+        var blue = 0
         var clipped = 0
         var count = 0
         let pixels = base.assumingMemoryBound(to: UInt8.self)
         for y in stride(from: height / 4, to: height * 3 / 4, by: 8) {
             for x in stride(from: width / 4, to: width * 3 / 4, by: 8) {
-                let red = Int(pixels[y * rowBytes + x * 4 + 2])
+                let offset = y * rowBytes + x * 4
+                let red = Int(pixels[offset + 2])
+                green += Int(pixels[offset + 1])
+                blue += Int(pixels[offset])
                 sum += red
                 if red == 0 || red == 255 { clipped += 1 }
                 count += 1
             }
         }
         guard count > 0 else { return }
-        frames.append(PPGCameraFrame(timestamp: CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds,
+        let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds
+        guard timestamp.isFinite else { finish("相机帧时间异常，请重测。"); return }
+        // A red-dominant, illuminated ROI is a contact heuristic, not a
+        // validated classifier. Aggregate only channel statistics on-device.
+        if sum > count * 40 && Double(sum) > 1.25 * Double(max(green, blue)) {
+            contactFrames += 1
+        }
+        frames.append(PPGCameraFrame(timestamp: timestamp,
                                      redLevel: Double(sum) / Double(255 * count),
                                      clippedFraction: Double(clipped) / Double(count)))
+        if lastPreviewTime == nil || timestamp - (lastPreviewTime ?? timestamp) >= 0.2 {
+            lastPreviewTime = timestamp
+            let visible = Array(frames.filter { timestamp - $0.timestamp <= 4 })
+            DispatchQueue.main.async { self.waveform = visible }
+        }
     }
 
     private func finish(_ message: String) {
