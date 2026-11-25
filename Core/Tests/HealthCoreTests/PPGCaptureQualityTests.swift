@@ -35,6 +35,37 @@ final class PPGCaptureQualityTests: XCTestCase {
         XCTAssertEqual(PPGCaptureQuality.assess(flat), .flatSignal)
     }
 
+    func testLocalDropoutCannotBeHiddenByHighMeanFrameRate() {
+        // Three seconds sampled at 10 Hz in the middle of a 60 Hz recording.
+        let input = frames(count: 720, fps: 60).enumerated().compactMap { index, frame in
+            !(180..<360).contains(index) || index.isMultiple(of: 6) ? frame : nil
+        }
+        XCTAssertEqual(PPGCaptureQuality.assess(input), .irregularTiming)
+        XCTAssertNil(PPGPulseEstimator.estimate(input))
+    }
+
+    func testPeriodicOneSidedContactChangeCanMimicPulseInTheScalarSignal() {
+        let scalar = frames(count: 360)
+        XCTAssertNotNil(PPGPulseEstimator.estimate(scalar))
+        for axis in [SIMD2<Double>(1, 0), SIMD2<Double>(0, 1)] {
+            let oneSided = scalar.map { frame in
+                PPGCameraFrame(timestamp: frame.timestamp, redLevel: frame.redLevel,
+                               clippedFraction: 0, spatialContrast: axis * (frame.redLevel - 0.7))
+            }
+            XCTAssertEqual(PPGCaptureQuality.assess(oneSided), .unstableContact)
+            XCTAssertNil(PPGPulseEstimator.estimate(oneSided))
+        }
+    }
+
+    func testUniformPulsationWithUnevenStaticIlluminationIsRetained() throws {
+        let input = frames(count: 360).map { frame in
+            PPGCameraFrame(timestamp: frame.timestamp, redLevel: frame.redLevel, clippedFraction: 0,
+                           spatialContrast: SIMD2(0.1 + 0.2 * (frame.redLevel - 0.7), -0.05))
+        }
+        XCTAssertEqual(PPGCaptureQuality.assess(input), .readyForAnalysis)
+        XCTAssertEqual(try XCTUnwrap(PPGPulseEstimator.estimate(input)).beatsPerMinute, 60, accuracy: 2)
+    }
+
     func testRejectsInvalidFrameMetadata() {
         for invalid in [
             PPGCameraFrame(timestamp: .nan, redLevel: 0.5, clippedFraction: 0),
