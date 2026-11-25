@@ -26,6 +26,7 @@ targets:
         PRODUCT_NAME: HealthIntelligence
         GENERATE_INFOPLIST_FILE: "YES"
         INFOPLIST_KEY_CFBundleDisplayName: "健康中枢"
+        INFOPLIST_KEY_NSCameraUsageDescription: "应您主动请求，使用后置摄像头在本机分析指尖脉搏信号质量。不会保存视频。"
         INFOPLIST_KEY_NSHealthShareUsageDescription: "用于读取您选择的心率、睡眠、体征和健康记录，并在本机呈现趋势。"
         INFOPLIST_KEY_NSHealthUpdateUsageDescription: "仅将您明确输入的血压、血糖和体重写入 Apple 健康。"
         # Launch screen: without a launch screen key iOS runs the app in
