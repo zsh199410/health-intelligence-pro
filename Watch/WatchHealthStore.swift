@@ -49,8 +49,9 @@ final class WatchHealthStore: ObservableObject {
         }
         readings = result
         let intervals = (try? await latestSleepIntervals()) ?? []
-        sleep = intervals.isEmpty ? nil : SleepCalculator.summarize(intervals)
-        sleepWindow = SleepSession.window(from: intervals)
+        let session = SleepSession.latest(from: intervals)
+        sleep = session.map { SleepCalculator.summarize($0.intervals) }
+        sleepWindow = session?.window
         WatchStatusBridge.shared.sendRefreshDate(Date())
     }
 

@@ -69,8 +69,9 @@ final class HealthViewModel: ObservableObject {
         let nightIDs = ["oxygenSaturation", "respiratoryRate", "sleepingWristTemperature", "appleSleepingBreathingDisturbances"]
         do {
             let intervals = try await repository.sleepIntervals()
-            sleep = intervals.isEmpty ? nil : SleepCalculator.summarize(intervals)
-            sleepWindow = SleepSession.window(from: intervals)
+            let session = SleepSession.latest(from: intervals)
+            sleep = session.map { SleepCalculator.summarize($0.intervals) }
+            sleepWindow = session?.window
             var nights: [String: MetricReading] = [:]
             if let window = sleepWindow {
                 for id in nightIDs {
