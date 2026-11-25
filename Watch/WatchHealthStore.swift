@@ -22,15 +22,21 @@ final class WatchHealthStore: ObservableObject {
     ]
 
     func authorize() async {
+        guard !isLoading else { return }
         guard HKHealthStore.isHealthDataAvailable() else {
             errorMessage = "当前手表不支持健康记录访问"; return
         }
-        let read: Set<HKObjectType> = Set(definitions.compactMap {
+        isLoading = true
+        defer { isLoading = false }
+        var read: Set<HKObjectType> = Set(definitions.compactMap {
             HKObjectType.quantityType(forIdentifier: $0.2) as HKObjectType?
-        } + [HKObjectType.categoryType(forIdentifier: .sleepAnalysis)!])
+        })
+        if let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) {
+            read.insert(sleepType)
+        }
         do {
             try await store.requestAuthorization(toShare: [], read: read)
-            await refresh()
+            await loadReadings()
         } catch { errorMessage = "授权请求失败：\(error.localizedDescription)" }
     }
 
@@ -38,21 +44,44 @@ final class WatchHealthStore: ObservableObject {
         guard HKHealthStore.isHealthDataAvailable(), !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
+        await loadReadings()
+    }
+
+    private func loadReadings() async {
+        var failed: [String] = []
         var result: [String: MetricReading] = [:]
-        for (id, _, identifier, unit, multiplier) in definitions {
-            guard let type = HKObjectType.quantityType(forIdentifier: identifier),
-                  let sample = try? await latest(type) else { continue }
+        for (id, name, identifier, unit, multiplier) in definitions {
+            guard let type = HKObjectType.quantityType(forIdentifier: identifier) else { continue }
+            let sample: HKQuantitySample
+            do {
+                guard let latestSample = try await latest(type) else { continue }
+                sample = latestSample
+            } catch {
+                failed.append(name)
+                continue
+            }
             let value = sample.quantity.doubleValue(for: unit) * multiplier
             guard value.isFinite else { continue }
             result[id] = MetricReading(id: id, value: value, unit: "", recordedAt: sample.endDate,
                                        source: sample.sourceRevision.source.name)
         }
         readings = result
-        let intervals = (try? await latestSleepIntervals()) ?? []
-        let session = SleepSession.latest(from: intervals)
-        sleep = session.map { SleepCalculator.summarize($0.intervals) }
-        sleepWindow = session?.window
-        WatchStatusBridge.shared.sendRefreshDate(Date())
+        do {
+            let intervals = try await latestSleepIntervals()
+            let session = SleepSession.latest(from: intervals)
+            sleep = session.map { SleepCalculator.summarize($0.intervals) }
+            sleepWindow = session?.window
+        } catch {
+            sleep = nil
+            sleepWindow = nil
+            failed.append("睡眠")
+        }
+        if failed.isEmpty {
+            errorMessage = nil
+            WatchStatusBridge.shared.sendRefreshDate(Date())
+        } else {
+            errorMessage = "读取失败：" + failed.joined(separator: "、") + "。请稍后刷新。"
+        }
     }
 
     private func latestSleepIntervals() async throws -> [SleepInterval] {
