@@ -42,7 +42,8 @@ struct PPGCaptureView: View {
                         .font(.footnote)
                 }
             }
-            PPGWatchContextView()
+            PPGWatchContextView(acquisition: capture.acquisitionWindow)
+                .id(capture.acquisitionWindow)
         }
         .navigationTitle("指尖脉搏信号")
         .onDisappear { capture.stop() }
