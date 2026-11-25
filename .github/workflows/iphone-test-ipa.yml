@@ -109,6 +109,14 @@ jobs:
             "Version: $version ($build)" \
             "Source commit: ${GITHUB_SHA}" \
             > dist/README-SIGN-BEFORE-INSTALL.txt
+          {
+            printf '### iPhone 未签名候选包\n\n'
+            printf '版本 %s（Build %s）\n\n' "$version" "$build"
+            printf '源码提交 `%s`\n\n' "$GITHUB_SHA"
+            printf 'IPA SHA256\n\n```text\n'
+            cat dist/SHA256SUMS.txt
+            printf '```\n'
+          } >> "$GITHUB_STEP_SUMMARY"
           ls -lh dist/HealthIntelligence-iPhone-UNSIGNED.ipa dist/SHA256SUMS.txt
 
       - name: Upload iPhone signing input

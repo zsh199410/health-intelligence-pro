@@ -7,6 +7,14 @@ struct SettingsView: View {
     @AppStorage("themePreference") private var themePreference: AppThemePreference = .system
     @State private var showDeleteConfirmation = false
 
+    private var versionText: String {
+        guard let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+              let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String else {
+            return "版本信息不可用"
+        }
+        return "\(version)（Build \(build)）"
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -63,7 +71,7 @@ struct SettingsView: View {
                 }
                 Section("关于") {
                     LabeledContent("产品", value: "健康中枢 · Health Intelligence")
-                    LabeledContent("版本", value: "1.0.0 · 工程候选版")
+                    LabeledContent("版本", value: versionText)
                     LabeledContent("健康数据", value: "HealthKit")
                     Text("非医疗器械，不用于疾病诊断或急救监护。")
                         .font(.footnote).foregroundStyle(HealthTheme.muted)
