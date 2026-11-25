@@ -169,12 +169,12 @@ final class HealthKitRepository {
     }
 
     /// Reads an existing ECG waveform on demand; does not trigger a new ECG measurement.
-    func ecgVoltagePoints(id: UUID) async throws -> [ECGVoltagePoint] {
+    func ecgWaveform(id: UUID) async throws -> ECGWaveform? {
         let samples = try await sampleQuery(type: HKObjectType.electrocardiogramType(),
                                             predicate: HKQuery.predicateForObject(with: id), limit: 1)
-        guard let ecg = samples.first as? HKElectrocardiogram
-        else { return [] }
-        return try await withCheckedThrowingContinuation { continuation in
+        guard let ecg = samples.first as? HKElectrocardiogram else { return nil }
+        let frequency = ecg.samplingFrequency?.doubleValue(for: .hertz())
+        let samplesInLead: [ECGVoltagePoint] = try await withCheckedThrowingContinuation { continuation in
             let lock = NSLock()
             var points: [ECGVoltagePoint] = []
             var completed = false
@@ -188,20 +188,17 @@ final class HealthKitRepository {
                 if let measurement,
                    let quantity = measurement.quantity(for: .appleWatchSimilarToLeadI) {
                     let value = quantity.doubleValue(for: .voltUnit(with: .milli))
-                    if value.isFinite {
-                        points.append(ECGVoltagePoint(seconds: measurement.timeSinceSampleStart,
-                                                      millivolts: value))
-                    }
+                    points.append(ECGVoltagePoint(seconds: measurement.timeSinceSampleStart, millivolts: value))
                 }
                 if done {
                     completed = true
-                    // Downsample for a responsive chart; full ECG export requires a dedicated audited path.
-                    let strideSize = max(1, points.count / 1600)
-                    continuation.resume(returning: Swift.stride(from: 0, to: points.count, by: strideSize).map { points[$0] })
+                    continuation.resume(returning: points)
                 }
             }
             store.execute(query)
         }
+        guard !samplesInLead.isEmpty else { return nil }
+        return try ECGWaveform(samples: samplesInLead, samplingFrequency: frequency)
     }
 
     func saveWeight(_ kg: Double) async throws {
