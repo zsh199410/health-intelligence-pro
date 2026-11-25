@@ -53,10 +53,10 @@ final class HealthKitRepository {
             date = sample.endDate
             source = sample.sourceRevision.source.name
         case .sumToday:
-            let (total, end) = try await todaySum(metric.quantityType, unit: metric.unit)
-            value = total.map { $0 * metric.multiplier }
-            date = end
-            source = "HealthKit 日累计"
+            guard let (total, lastSampleEnd) = try await todaySum(metric.quantityType, unit: metric.unit) else { return nil }
+            value = total * metric.multiplier
+            date = lastSampleEnd
+            source = "HealthKit 日累计 · 最近样本"
         }
         guard let value, value.isFinite else { return nil }
         return MetricReading(id: metric.id, value: value, unit: metric.unitText,
@@ -88,7 +88,7 @@ final class HealthKitRepository {
                calendar: Calendar = .current) async throws -> [TrendPoint] {
         let anchor = calendar.startOfDay(for: end)
         guard let start = calendar.date(byAdding: .day, value: -(max(1, days) - 1), to: anchor) else { return [] }
-        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [.strictStartDate, .strictEndDate])
         let option: HKStatisticsOptions = metric.aggregation == .sumToday ? .cumulativeSum : .discreteAverage
         return try await withCheckedThrowingContinuation { continuation in
             let query = HKStatisticsCollectionQuery(quantityType: metric.quantityType,
@@ -114,10 +114,11 @@ final class HealthKitRepository {
     }
 
     func sleepIntervals() async throws -> [SleepInterval] {
-        let since = Calendar.current.date(byAdding: .hour, value: -36, to: Date())!
-        let predicate = HKQuery.predicateForSamples(withStart: since, end: .now)
+        let now = Date()
+        let since = now.addingTimeInterval(-36 * 3600)
+        let predicate = HKQuery.predicateForSamples(withStart: since, end: now)
         let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis)!
-        let samples = try await sampleQuery(type: sleepType, predicate: predicate, limit: 250)
+        let samples = try await sampleQuery(type: sleepType, predicate: predicate, limit: HKObjectQueryNoLimit)
         return samples.compactMap { sample in
             guard let sample = sample as? HKCategorySample,
                   let value = HKCategoryValueSleepAnalysis(rawValue: sample.value) else { return nil }
@@ -130,7 +131,10 @@ final class HealthKitRepository {
             case .awake: stage = .awake
             default: return nil // .inBed overlaps with actual stages
             }
-            return SleepInterval(start: sample.startDate, end: sample.endDate, stage: stage)
+            let start = max(since, sample.startDate)
+            let end = min(now, sample.endDate)
+            guard start < end else { return nil }
+            return SleepInterval(start: start, end: end, stage: stage)
         }
     }
 
@@ -166,8 +170,9 @@ final class HealthKitRepository {
 
     /// Reads an existing ECG waveform on demand; does not trigger a new ECG measurement.
     func ecgVoltagePoints(id: UUID) async throws -> [ECGVoltagePoint] {
-        let samples = try await sampleQuery(type: HKObjectType.electrocardiogramType(), predicate: nil, limit: 100)
-        guard let ecg = samples.compactMap({ $0 as? HKElectrocardiogram }).first(where: { $0.uuid == id })
+        let samples = try await sampleQuery(type: HKObjectType.electrocardiogramType(),
+                                            predicate: HKQuery.predicateForObject(with: id), limit: 1)
+        guard let ecg = samples.first as? HKElectrocardiogram
         else { return [] }
         return try await withCheckedThrowingContinuation { continuation in
             let lock = NSLock()
@@ -238,21 +243,31 @@ final class HealthKitRepository {
     }
 
     private func latestQuantity(_ type: HKQuantityType) async throws -> HKQuantitySample? {
-        let samples = try await sampleQuery(type: type, predicate: nil, limit: 1)
+        let predicate = HKQuery.predicateForSamples(withStart: nil, end: .now, options: .strictEndDate)
+        let samples = try await sampleQuery(type: type, predicate: predicate, limit: 1)
         return samples.first as? HKQuantitySample
     }
 
-    private func todaySum(_ type: HKQuantityType, unit: HKUnit) async throws -> (Double?, Date) {
-        let start = Calendar.current.startOfDay(for: .now)
-        let predicate = HKQuery.predicateForSamples(withStart: start, end: Date())
-        return try await withCheckedThrowingContinuation { continuation in
+    private func todaySum(_ type: HKQuantityType, unit: HKUnit) async throws -> (Double, Date)? {
+        let now = Date()
+        let start = Calendar.current.startOfDay(for: now)
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: now, options: .strictEndDate)
+        let samples = try await sampleQuery(type: type, predicate: predicate, limit: 1)
+        guard let mostRecent = samples.first else { return nil }
+        let total: Double? = try await withCheckedThrowingContinuation { continuation in
             let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate,
                                           options: .cumulativeSum) { _, statistics, error in
-                if let error { continuation.resume(throwing: error); return }
-                continuation.resume(returning: (statistics?.sumQuantity()?.doubleValue(for: unit), Date()))
+                if let error = error as? HKError, error.code == .errorNoData {
+                    continuation.resume(returning: nil)
+                } else if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: statistics?.sumQuantity()?.doubleValue(for: unit))
+                }
             }
             store.execute(query)
         }
+        return total.map { ($0, mostRecent.endDate) }
     }
 
     private func sampleQuery(type: HKSampleType, predicate: NSPredicate?, limit: Int) async throws -> [HKSample] {
