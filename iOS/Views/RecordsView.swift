@@ -27,7 +27,7 @@ struct RecordsView: View {
                     if !visibleMetrics(in: group).isEmpty {
                     Section(group.rawValue) {
                         ForEach(visibleMetrics(in: group)) { metric in
-                            NavigationLink { MetricDetailView(metric: metric) } label: {
+                            NavigationLink { PersonalTrendCard(metric: metric) } label: {
                                 HStack {
                                     Image(systemName: metric.symbol)
                                         .frame(width: 24)
