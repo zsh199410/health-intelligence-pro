@@ -30,3 +30,28 @@ Issue #2 正文的首次可安装门槛有历史用户确认与 Muse 包记录�
 4. **GPT / P1 与 P3**：审查 #21、#22 的原创设计和算法，推进数据来源矩阵、真实测量与推断区分、无障碍以及健康报告。优先复核睡眠和恢复，之后分批推进压力、能量、负荷和风险提示。未进行新增页面或全面健康功能验收。
 5. **GPT 与 Muse / P2**：按 Issue #2 最新范围保留主动 iPhone 摄像头 PPG 与 S12 多源分析。GPT 审查采集、质量拒绝、温控、隐私与 PRV／ECG-HRV 区分。Muse 通过同步参考设备记录误差和拒测率。P2 尚未实现，血压、血糖、尿酸和疾病诊断不能通过这些信号虚构推算。
 6. **GPT 与工程 / P4**：以 #19 的契约为起点审查清单签名、防回放、完整性、版本兼容及回滚。按 iOS 签名和安装机制验收，当前没有新的更新器代码。
+
+## 第二轮研发与候选包
+
+本轮从睡眠修复分支派生两个工作分支。发布候选位于 `codex/iphone-sleep-candidate`，PPG 实验位于 `codex/ppg-capture-quality`。两者均已推送。真实签名材料和健康样本均未用于本轮 CI。
+
+| 交付 | 源码提交 | 改动及中文更新说明 |
+| --- | --- | --- |
+| iPhone 与 Watch 数据可靠性 | `36f8b22` | 睡眠卡片详情保留本次睡眠的测量值、中文时间与来源，并提供全部时段入口。按样本结束时间过滤夜间读数。手表授权与刷新串行，部分查询失败会提示具体项目。 |
+| 2.0.0（Build 21） | `b8bde9ec3adf54cd95dcceef2bf2f1d1c721ee94` | 首个包含上述修改的 iPhone 未签名候选包，arm64 设备构建、打包、上传全部成功。[Build 21 产物](https://github.com/zsh199410/health-intelligence-pro/actions/runs/45552086892/artifacts/14993713511) |
+| 2.0.0（Build 22） | `dad8da3722ce3e8648abf89febf20fb0c8a51097` | 在 Build 21 的基础上移植 #23 现有的三笔授权修复。引导仅在本次授权请求成功完成后自动关闭。设置页从包内读取版本和 Build，CI 摘要公布 IPA 文件校验和。[授权来源 PR #23](https://github.com/zsh199410/health-intelligence-pro/pull/23) |
+| 指尖信号实验 | `9450d75`、`f912c63a72a82cccc830216559673f6a2dc3b741` | 设置页提供用户主动开启的 12 秒相机采集，使用帧时间戳、红通道与截断比例进行初筛。支持低亮度补光、取消、后台停止与温控。另可按需读取最近七天有 Apple Watch 设备标记的心率、静息心率和 HRV，逐条显示来源和时间。该分支独立于两个候选包。[PPG 分支](https://github.com/zsh199410/health-intelligence-pro/tree/codex/ppg-capture-quality) |
+
+**涉及文件。** 候选改动集中在 `iOS/Services/{HealthKitRepository,HealthViewModel}.swift`、`iOS/Views/{SleepView,WelcomeHealthView,SettingsView}.swift`、`Watch/WatchHealthStore.swift`、`project.yml` 和 `.github/workflows/iphone-test-ipa.yml`。实验分支新增 `Core/Sources/HealthCore/PPGCaptureQuality.swift`、对应 XCTest、`iOS/Services/PPGCameraCapture.swift` 与 `iOS/Views/{PPGCaptureView,PPGWatchContextView}.swift`，更新设置入口和相机权限说明。
+
+**测试范围。** 两版候选均通过 22 项 Linux XCTest、Swift 源码解析与仓库结构检查。PPG 分支通过 27 项 XCTest，其中 5 项覆盖合成光学信号与异常帧。真机仍须验证指尖覆盖、运动干扰、温控、辅助功能，以及 S12 来源信息。PPG 页提供带时间的参考测量；同步信号融合、脉率/间期验证和诊断性能均未验收。摄像头不保存视频。
+
+**发布和 PR 权限。** Git 分支推送成功。原有 GraphQL 错误已用 REST 创建接口复核，网络代理在连接 GitHub API 时返回 Forbidden。已将 `api.github.com` 单独加入网络配置草稿，待应用并复核 API 权限。仓库内 Actions 通过 GitHub REST 提交独立草稿 PR 时收到明确策略错误 `GitHub Actions is not permitted to create or approve pull requests`。经核对没有新 PR。可用具有仓库权限的个人 GitHub 会话打开候选分支比较页；已有分支和 IPA 可独立使用。[候选 PR 创建入口](https://github.com/zsh199410/health-intelligence-pro/compare/main...codex/iphone-sleep-candidate?expand=1) · [GitHub 的策略错误](https://github.com/zsh199410/health-intelligence-pro/actions/runs/45553778886) · [Issue #2](https://github.com/zsh199410/health-intelligence-pro/issues/2)
+
+**接续。** GPT 审查夜间指标时间边界、失败态和 PPG 分支的数据来源限制。Muse 私下签名候选 IPA，在 iPhone 16 Pro Max 验证启动、部分授权、撤权、重试和实际睡眠样本，并单独在 S12 验证手表。首阶段 iPhone IPA 排除 Watch 扩展，配套签名与安装继续按双端门禁执行。若需回滚，使用 Muse 保存并曾通过真机启动验收的历史包。在取得新版设备证据前保留该包。
+
+**Build 22 交付记录。** 设备构建 Run 9 成功，下载为 GitHub 登录后的产物 ZIP。内含 `HealthIntelligence-iPhone-UNSIGNED.ipa`、`SHA256SUMS.txt`、Bundle ID 与私下签名说明。独立 Linux CI 在 Run 9 的既有产物上校验 SHA256SUMS，解压核对 2.0.0（22）、源码记录、Bundle ID 和可执行文件。IPA 本身的 SHA256 为 `53db6ab8f7de70ce3f5c74a6a60fa129263a576e6b3264a018d6cbcd2399e188`。当前云实例下载 API 返回 Forbidden，匿名下载地址返回 404，故没有本地 IPA 附件。产物按工作流设置保留七天。[Build 22 产物直达](https://github.com/zsh199410/health-intelligence-pro/actions/runs/45552674186/artifacts/14994178377) · [构建](https://github.com/zsh199410/health-intelligence-pro/actions/runs/45552674186) · [独立校验](https://github.com/zsh199410/health-intelligence-pro/actions/runs/45553247400)
+
+**原提交 CI 终态。** `65a44bb` 的 Run 205 全部成功，核心测试、iOS/watchOS 模拟器构建、截图 UI 测试、截图尺寸核对、Watch 截图及截图集校验均通过。该运行没有失败项。[Run 205](https://github.com/zsh199410/health-intelligence-pro/actions/runs/45551360874)
+
+**候选与实验分支 CI 终态。** Build 21、Build 22 及 PPG 实验分支各自的 macOS 核心测试和双端模拟器构建均通过，iPhone 多页面截图、Watch 截图和完整截图集校验通过。PPG 真机光学采集与手表记录匹配仍需设备验证。[Build 21 CI](https://github.com/zsh199410/health-intelligence-pro/actions/runs/45552086702) · [Build 22 CI](https://github.com/zsh199410/health-intelligence-pro/actions/runs/45552674194) · [PPG CI](https://github.com/zsh199410/health-intelligence-pro/actions/runs/45552313724)
