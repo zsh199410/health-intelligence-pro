@@ -45,3 +45,33 @@ jobs:
     name: IPA SHA256 ${{ needs.inspect.outputs.sha256 }}
     steps:
       - run: echo 'Build 22 existing IPA verified.'
+  propose:
+    needs: inspect
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - name: Propose verified iPhone candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo=zsh199410/health-intelligence-pro
+          head=codex/iphone-sleep-candidate
+          expected=dad8da3722ce3e8648abf89febf20fb0c8a51097
+          test "$(gh api "repos/$repo/git/ref/heads/$head" --jq .object.sha)" = "$expected"
+          existing=$(gh pr list --repo "$repo" --state open --head "$head" --base main --json url --jq '.[0].url // empty')
+          if [ -n "$existing" ]; then
+            echo "$existing"
+            exit 0
+          fi
+          cat > "$RUNNER_TEMP/pr.md" <<'BODY'
+          iPhone 2.0.0（Build 22）独立候选。修复最近睡眠摘要与夜间详情的一致性，整合 #23 的授权重试修复，改进 Watch 刷新失败提示。
+
+          关联 #2。iPhone arm64 未签名包已生成并复核，签名、安装和实际健康记录验证待完成。PPG 在独立实验分支开发。
+
+          [构建产物](https://github.com/zsh199410/health-intelligence-pro/actions/runs/45552674186/artifacts/14994178377)
+          BODY
+          gh pr create --repo "$repo" --base main --head "$head" --draft \
+            --title 'P0：iPhone 2.0.0（Build 22）睡眠与 HealthKit 授权候选' --body-file "$RUNNER_TEMP/pr.md"
