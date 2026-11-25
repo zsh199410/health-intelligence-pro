@@ -11,6 +11,9 @@ final class PPGCameraCapture: NSObject, ObservableObject, AVCaptureVideoDataOutp
     @Published private(set) var waveform: [PPGCameraFrame] = []
     @Published private(set) var estimate: PPGPulseEstimator.Estimate?
 
+    @Published private(set) var acquisitionWindow: ClosedRange<Date>?
+
+    private var clockAnchor: (pts: TimeInterval, date: Date)?
     private var lastPreviewTime: Double?
     private var contactFrames = 0
     private let queue = DispatchQueue(label: "health.ppg.capture")
@@ -28,6 +31,7 @@ final class PPGCameraCapture: NSObject, ObservableObject, AVCaptureVideoDataOutp
             self.contactFrames = 0
             self.lastPreviewTime = nil
             DispatchQueue.main.async {
+                self.acquisitionWindow = nil
                 self.waveform = []
                 self.estimate = nil
             }
@@ -88,9 +92,19 @@ final class PPGCameraCapture: NSObject, ObservableObject, AVCaptureVideoDataOutp
             return
         }
 
+        if let clock = session.synchronizationClock {
+            let pts = CMClockGetTime(clock).seconds
+            if pts.isFinite { clockAnchor = (pts, Date()) }
+        }
         publish("采集中，请保持手指静止。", busy: true)
         queue.asyncAfter(deadline: .now() + 12) { [weak self] in
             guard let self, self.captureID == id else { return }
+            if let anchor = self.clockAnchor, let first = self.frames.first, let last = self.frames.last,
+               last.timestamp >= first.timestamp {
+                let start = anchor.date.addingTimeInterval(first.timestamp - anchor.pts)
+                let end = anchor.date.addingTimeInterval(last.timestamp - anchor.pts)
+                DispatchQueue.main.async { self.acquisitionWindow = start...end }
+            }
             let quality = PPGCaptureQuality.assess(self.frames)
             guard quality == .readyForAnalysis else { self.finish(self.description(for: quality)); return }
             guard Double(self.contactFrames) >= 0.90 * Double(self.frames.count) else {
@@ -158,6 +172,7 @@ final class PPGCameraCapture: NSObject, ObservableObject, AVCaptureVideoDataOutp
 
     private func finish(_ message: String) {
         captureID = nil
+        clockAnchor = nil
         if let camera, camera.isTorchActive, (try? camera.lockForConfiguration()) != nil {
             camera.torchMode = .off
             camera.unlockForConfiguration()
