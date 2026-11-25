@@ -43,6 +43,9 @@ struct SettingsView: View {
                     Text("出于隐私保护，HealthKit 不允许第三方 App 精确判断读取权限是否被拒绝；没有记录不等于测量正常。")
                         .font(.footnote).foregroundStyle(HealthTheme.muted)
                 }
+                Section("实验功能") {
+                    NavigationLink("指尖脉搏信号采集") { PPGCaptureView() }
+                }
                 Section("我的健康档案") {
                     LabeledContent("健康日志", value: "\(journal.entries.count) 条")
                     Button("清空 App 内全部健康日志", role: .destructive) { showDeleteConfirmation = true }
