@@ -20,6 +20,7 @@ final class HealthViewModel: ObservableObject {
     /// Empty data and a denied read look identical by HealthKit design and
     /// are NOT recorded here.
     @Published private(set) var failedMetricIDs: [String] = []
+    @Published private(set) var ecgReadFailed = false
     @Published private(set) var ecgs: [ECGSummary] = []
     @Published private(set) var heartEvents: [HeartEvent] = []
     @Published private(set) var isLoading = false
@@ -102,7 +103,13 @@ final class HealthViewModel: ObservableObject {
             nightReadings = [:]
             failedNightMetricIDs = []
         }
-        ecgs = (try? await repository.ecgSummaries()) ?? []
+        do {
+            ecgs = try await repository.ecgSummaries()
+            ecgReadFailed = false
+        } catch {
+            ecgs = []
+            ecgReadFailed = true
+        }
         heartEvents = (try? await repository.heartEvents()) ?? []
         lastRefreshedAt = .now
     }

@@ -139,13 +139,17 @@ final class HealthKitRepository {
     }
 
     func ecgSummaries() async throws -> [ECGSummary] {
-        let samples = try await sampleQuery(type: HKObjectType.electrocardiogramType(),
-                                            predicate: nil, limit: 20)
+        let now = Date()
+        let cal = Calendar.current
+        guard let start = cal.date(byAdding: .day, value: -89, to: cal.startOfDay(for: now)) else { return [] }
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: now, options: [.strictStartDate, .strictEndDate])
+        let samples = try await sampleQuery(type: HKObjectType.electrocardiogramType(), predicate: predicate, limit: HKObjectQueryNoLimit)
         return samples.compactMap { sample in
             guard let ecg = sample as? HKElectrocardiogram else { return nil }
             return ECGSummary(id: ecg.uuid, recordedAt: ecg.startDate,
                               classification: ecgDescription(ecg.classification),
-                              averageHeartRate: ecg.averageHeartRate?.doubleValue(for: HealthCatalog.pulseUnit))
+                              averageHeartRate: ecg.averageHeartRate?.doubleValue(for: HealthCatalog.pulseUnit),
+                              source: ecg.sourceRevision.source.name)
         }
     }
 

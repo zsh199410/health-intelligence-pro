@@ -32,33 +32,47 @@ struct HeartView: View {
                             }
                         }
                     }
-                    SectionHeadline(title: "心电图 ECG", subtitle: "来自苹果系统的已完成测量")
-                    if health.ecgs.isEmpty {
+                    SectionHeadline(title: "心电图 ECG", subtitle: "最近 90 个本地自然日 · 苹果系统分类")
+                    if health.ecgReadFailed {
+                        HealthCard { EmptyHealthState(title: "读取 ECG 失败", detail: "请解锁设备并下拉刷新。") }
+                    } else if health.ecgs.isEmpty {
                         HealthCard {
                             EmptyHealthState(title: "暂无 ECG 历史记录",
                                              detail: "请使用手表系统 ECG App 进行测量。功能可能受设备、年龄、地区与授权限制。")
                         }
                     } else {
-                        ForEach(health.ecgs) { ecg in
-                            NavigationLink { ECGDetailView(ecg: ecg) } label: {
-                                HealthCard {
-                                    HStack(spacing: 12) {
-                                        Image(systemName: "waveform.path.ecg")
-                                            .foregroundStyle(HealthTheme.coral).font(.title3)
-                                        VStack(alignment: .leading, spacing: 5) {
-                                            Text(ecg.classification).font(.headline).foregroundStyle(HealthTheme.ink)
-                                            Text(ecg.recordedAt.formatted())
-                                                .font(.caption).foregroundStyle(HealthTheme.muted)
-                                            if let rate = ecg.averageHeartRate {
-                                                Text("平均心率 \(Int(rate.rounded())) 次/分")
-                                                    .font(.caption).foregroundStyle(HealthTheme.muted)
-                                            }
-                                        }
-                                        Spacer()
-                                        Image(systemName: "chevron.right").foregroundStyle(HealthTheme.muted)
-                                    }
+                        let counts = Dictionary(grouping: health.ecgs, by: \.classification).mapValues { $0.count }
+                        HealthCard {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("记录分类 · 共 \(health.ecgs.count) 条").font(.headline)
+                                ForEach(counts.keys.sorted(), id: \.self) { label in
+                                    LabeledContent(label, value: "\(counts[label, default: 0]) 条")
                                 }
-                            }.buttonStyle(.plain)
+                                Text("每条已保存心电图计一次。统计范围仅覆盖测量时段。").font(.footnote)
+                            }
+                        }
+                        LazyVStack {
+                            ForEach(health.ecgs) { ecg in
+                                NavigationLink { ECGDetailView(ecg: ecg) } label: {
+                                    HealthCard {
+                                        HStack(spacing: 12) {
+                                            Image(systemName: "waveform.path.ecg")
+                                                .foregroundStyle(HealthTheme.coral).font(.title3)
+                                            VStack(alignment: .leading, spacing: 5) {
+                                                Text(ecg.classification).font(.headline).foregroundStyle(HealthTheme.ink)
+                                                Text(ecg.recordedAt.formatted())
+                                                    .font(.caption).foregroundStyle(HealthTheme.muted)
+                                                if let rate = ecg.averageHeartRate {
+                                                    Text("平均心率 \(rate, format: .number.precision(.fractionLength(0))) 次/分")
+                                                        .font(.caption).foregroundStyle(HealthTheme.muted)
+                                                }
+                                            }
+                                            Spacer()
+                                            Image(systemName: "chevron.right").foregroundStyle(HealthTheme.muted)
+                                        }
+                                    }
+                                }.buttonStyle(.plain)
+                            }
                         }
                     }
                     SectionHeadline(title: "系统心率提醒", subtitle: "苹果系统已产生的通知记录")
@@ -105,6 +119,7 @@ struct ECGDetailView: View {
                 HealthCard {
                     VStack(alignment: .leading, spacing: 8) {
                         HealthPill(title: "只读记录", icon: "lock.fill", tint: HealthTheme.coral)
+                        LabeledContent("记录来源", value: ecg.source ?? "未提供")
                         Text(ecg.classification).font(.title2.bold()).foregroundStyle(HealthTheme.ink)
                         Text(ecg.recordedAt.formatted()).font(.caption).foregroundStyle(HealthTheme.muted)
                     }
@@ -117,34 +132,22 @@ struct ECGDetailView: View {
                         } else if readFailed {
                             EmptyHealthState(title: "读取 ECG 波形失败", detail: "请检查健康访问或记录的采样时间，再打开此记录。")
                         } else if let trace {
-                            if trace.segments.isEmpty {
-                                Text("采样中断过多，无法绘制完整概览。")
-                            } else {
-                                Chart {
-                                    ForEach(trace.segments) { segment in
-                                        ForEach(segment.points) { point in
-                                            if segment.points.count == 1 {
-                                                PointMark(x: .value("时间 / 秒", point.seconds),
-                                                          y: .value("电压 / mV", point.millivolts))
-                                            } else {
-                                                LineMark(x: .value("时间 / 秒", point.seconds),
-                                                         y: .value("电压 / mV", point.millivolts),
-                                                         series: .value("连续片段", segment.id))
-                                            }
-                                        }
-                                    }
-                                }
-                                .foregroundStyle(HealthTheme.coral)
-                                .frame(height: 230).accessibilityHidden(true)
-                            }
-                            Text("原始采样 \(trace.samples.count) 点 · 时间间断 \(trace.gapCount) 处")
-                                .font(.caption).foregroundStyle(HealthTheme.muted)
+                            ECGTracePlot(trace: trace)
                         } else {
                             EmptyHealthState(title: "没有可读取的波形", detail: "检查 HealthKit ECG 读取授权和原始数据可用性。")
                         }
                     }
                 }
-                Text("心电波形仅来自 Apple Watch 已完成的 ECG；本应用不能发起新检测。任何异常应由有资质的医疗专业人员结合症状判断。")
+                if let trace {
+                    let report = ecg.report(trace: trace, timeZone: .current)
+                    DisclosureGroup("本地心电记录摘要") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(report).textSelection(.enabled)
+                            ShareLink(item: report) { Label("分享文字摘要", systemImage: "square.and.arrow.up") }
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                Text("心电波形来自 Apple 健康中已保存的 ECG 记录；本应用不能发起新检测。任何异常应由有资质的医疗专业人员结合症状判断。")
                     .font(.footnote).foregroundStyle(HealthTheme.muted)
             }.padding(18)
         }
@@ -164,6 +167,53 @@ struct ECGDetailView: View {
             }
             loading = false
         }
+    }
+}
+
+private struct ECGTracePlot: View {
+    let trace: ECGWaveform
+    @State private var enlarged = false
+    @State private var offset: Double = 0
+
+    var body: some View {
+        let first = trace.samples.first?.seconds ?? 0
+        let last = trace.samples.last?.seconds ?? first
+        let duration = last - first
+        let zoom = enlarged && duration > 5
+        let start = first + min(offset, max(0, duration - 5))
+        let visible = zoom ? trace.segments(in: start...(start + 5)) : trace.segments
+        if duration > 5 {
+            Toggle("展开 5 秒波形", isOn: $enlarged)
+            if zoom {
+                Slider(value: $offset, in: 0...(duration - 5))
+                    .accessibilityLabel("波形起始秒数")
+                Text("显示 \(start, specifier: "%.1f") 至 \(start + 5, specifier: "%.1f") 秒")
+                    .font(.caption)
+            }
+        }
+        if visible.isEmpty {
+            Text("此范围缺少可绘制的连续波形。")
+        } else {
+            Chart {
+                ForEach(visible) { segment in
+                    ForEach(segment.points) { point in
+                        if segment.points.count == 1 {
+                            PointMark(x: .value("时间 / 秒", point.seconds),
+                                      y: .value("电压 / mV", point.millivolts))
+                        } else {
+                            LineMark(x: .value("时间 / 秒", point.seconds),
+                                     y: .value("电压 / mV", point.millivolts),
+                                     series: .value("连续片段", segment.id))
+                        }
+                    }
+                }
+            }
+            .chartXScale(domain: zoom ? start...(start + 5) : first...max(last, first + 0.001))
+            .foregroundStyle(HealthTheme.coral)
+            .frame(height: 230).accessibilityHidden(true)
+        }
+        Text("原始采样 \(trace.samples.count) 点 · 时间间断 \(trace.gapCount) 处")
+            .font(.caption).foregroundStyle(HealthTheme.muted)
     }
 }
 
