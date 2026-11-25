@@ -7,6 +7,9 @@ final class HealthViewModel: ObservableObject {
     @Published private(set) var readings: [String: MetricReading] = [:]
     @Published private(set) var trends: [String: [TrendPoint]] = [:]
     @Published private(set) var sleep: SleepSummary?
+    @Published private(set) var sleepSegments: [SleepInterval] = []
+    @Published private(set) var sleepReadFailed = false
+    @Published private(set) var failedNightMetricIDs: Set<String> = []
     /// Latest sleep session window, derived from the same intervals that
     /// produce `sleep`. Nil when there is no sleep record.
     @Published private(set) var sleepWindow: ClosedRange<Date>?
@@ -75,22 +78,31 @@ final class HealthViewModel: ObservableObject {
         do {
             let intervals = try await repository.sleepIntervals()
             let session = SleepSession.latest(from: intervals)
-            sleep = session.map { SleepCalculator.summarize($0.intervals) }
-            sleepWindow = session?.window
             var nights: [String: MetricReading] = [:]
-            if let window = sleepWindow {
+            var nightFailures: Set<String> = []
+            if let window = session?.window {
                 for id in nightIDs {
-                    if let metric = HealthCatalog.byID[id],
-                       let reading = try? await repository.reading(metric, in: window) {
-                        nights[id] = reading
+                    guard let metric = HealthCatalog.byID[id] else { continue }
+                    do {
+                        nights[id] = try await repository.reading(metric, in: window)
+                    } catch {
+                        nightFailures.insert(id)
                     }
                 }
             }
+            sleep = session.map { SleepCalculator.summarize($0.intervals) }
+            sleepWindow = session?.window
+            sleepSegments = session.map { SleepCalculator.segments($0.intervals) } ?? []
+            sleepReadFailed = false
             nightReadings = nights
+            failedNightMetricIDs = nightFailures
         } catch {
             sleep = nil
             sleepWindow = nil
+            sleepSegments = []
+            sleepReadFailed = true
             nightReadings = [:]
+            failedNightMetricIDs = []
         }
         ecgs = (try? await repository.ecgSummaries()) ?? []
         heartEvents = (try? await repository.heartEvents()) ?? []
