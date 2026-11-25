@@ -5,27 +5,27 @@ on:
     paths: ['.github/workflows/phase3-check-results.yml']
   workflow_dispatch:
     inputs:
-      job:
+      source_run:
         type: string
         required: true
-        description: Screenshot job ID in this repository
+        description: Simulator workflow run ID in this repository
 permissions:
   actions: read
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
-      JOB: ${{ inputs.job || '139135789108' }}
     steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: uitest-results
+          run-id: ${{ inputs.source_run || '45594178043' }}
+          github-token: ${{ github.token }}
+          path: results
       - name: Report XCTest assertion failures
         run: |
-          set -euo pipefail
-          [[ "$JOB" =~ ^[0-9]+$ ]]
-          gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$JOB/logs" > "$RUNNER_TEMP/simulator.log"
           python3 - <<'PY'
           import os, pathlib, re
-          lines = (pathlib.Path(os.environ["RUNNER_TEMP"]) / "simulator.log").read_text().splitlines()
+          lines = next(pathlib.Path("results").rglob("uitest.log")).read_text(errors="replace").splitlines()
           errors = [line for line in lines if re.search(r"Assertion Failure|error: .*?: |XCTAssert.*failed|Failed to .*?device|Unable to find a destination|Test Case .* failed", line)]
           for line in errors[-20:]:
               print("::notice title=Simulator test::" + line[:900].replace("%", "%25"))
