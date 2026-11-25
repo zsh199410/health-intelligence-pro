@@ -76,7 +76,9 @@ struct SleepView: View {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                         ForEach(["oxygenSaturation", "respiratoryRate", "sleepingWristTemperature", "appleSleepingBreathingDisturbances"], id: \.self) { id in
                             if let metric = HealthCatalog.byID[id] {
-                                NavigationLink { MetricDetailView(metric: metric) } label: {
+                                NavigationLink {
+                                    NightReadingDetail(metric: metric)
+                                } label: {
                                     MetricTile(metric: metric, reading: health.nightReadings[id], emptyText: "无夜间记录")
                                 }.buttonStyle(.plain)
                             }
@@ -92,5 +94,30 @@ struct SleepView: View {
             .navigationTitle("睡眠健康")
             .refreshable { await health.refresh() }
         }
+    }
+}
+
+private struct NightReadingDetail: View {
+    let metric: HealthMetric
+    @EnvironmentObject private var health: HealthViewModel
+
+    var body: some View {
+        List {
+            Section("本次睡眠 · 最近记录") {
+                if let reading = health.nightReadings[metric.id] {
+                    LabeledContent("测量值", value: "\(metric.display(reading.value)) \(reading.unit)")
+                    LabeledContent("记录时间", value: reading.recordedAt.formatted(
+                        .dateTime.year().month().day().hour().minute().locale(Locale(identifier: "zh_CN"))
+                    ))
+                    LabeledContent("数据来源", value: reading.source)
+                } else {
+                    Text("本次睡眠期间暂无可读取的记录。")
+                }
+            }
+            NavigationLink("查看全部时段的记录与趋势") {
+                MetricDetailView(metric: metric)
+            }
+        }
+        .navigationTitle(metric.name)
     }
 }

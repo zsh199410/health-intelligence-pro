@@ -63,13 +63,17 @@ final class HealthKitRepository {
                              recordedAt: date, source: source)
     }
 
-    /// Latest sample of a `.latest` metric overlapping `window`, or nil when
+    /// Latest sample of a `.latest` metric ending in `window`, or nil when
     /// no sample exists inside it. Never falls back to a sample outside the
     /// window: a daytime reading must not stand in for a night reading.
     /// Used for the sleep page, where `window` is the latest sleep session.
     func reading(_ metric: HealthMetric, in window: ClosedRange<Date>) async throws -> MetricReading? {
         guard metric.aggregation == .latest else { return nil }
-        let predicate = HKQuery.predicateForSamples(withStart: window.lowerBound, end: window.upperBound)
+        // The displayed record time is the sample end. Restrict that time
+        // before sorting and limiting so a later overlapping sample cannot
+        // displace the last record from the sleep session.
+        let predicate = HKQuery.predicateForSamples(withStart: window.lowerBound, end: window.upperBound,
+                                                    options: .strictEndDate)
         let samples = try await sampleQuery(type: metric.quantityType, predicate: predicate, limit: 1)
         guard let sample = samples.first as? HKQuantitySample else { return nil }
         let value = sample.quantity.doubleValue(for: metric.unit) * metric.multiplier

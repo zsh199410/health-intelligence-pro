@@ -30,14 +30,19 @@ final class HealthViewModel: ObservableObject {
     var isHealthAvailable: Bool { repository.isAvailable }
     var insights: [HealthInsight] { InsightEngine.insights(readings: readings, sleep: sleep) }
 
-    func connectAndRefresh() async {
-        guard !isLoading else { return }
+    /// True only when this invocation completed the HealthKit authorization request.
+    /// This does not indicate which read permissions the user granted.
+    @discardableResult
+    func connectAndRefresh() async -> Bool {
+        guard !isLoading, repository.isAvailable else { return false }
         do {
             try await repository.requestAccess()
             hasRequestedAccess = true
             await refresh()
+            return true
         } catch {
             message = "健康访问请求失败：\(error.localizedDescription)"
+            return false
         }
     }
 
@@ -69,8 +74,9 @@ final class HealthViewModel: ObservableObject {
         let nightIDs = ["oxygenSaturation", "respiratoryRate", "sleepingWristTemperature", "appleSleepingBreathingDisturbances"]
         do {
             let intervals = try await repository.sleepIntervals()
-            sleep = intervals.isEmpty ? nil : SleepCalculator.summarize(intervals)
-            sleepWindow = SleepSession.window(from: intervals)
+            let session = SleepSession.latest(from: intervals)
+            sleep = session.map { SleepCalculator.summarize($0.intervals) }
+            sleepWindow = session?.window
             var nights: [String: MetricReading] = [:]
             if let window = sleepWindow {
                 for id in nightIDs {

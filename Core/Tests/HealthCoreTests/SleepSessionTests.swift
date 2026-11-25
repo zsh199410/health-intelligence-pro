@@ -50,6 +50,27 @@ final class SleepSessionTests: XCTestCase {
         XCTAssertEqual(window?.upperBound, intervals[0].end)
     }
 
+    func testSummaryExcludesEarlierSeparatedSleep() throws {
+        let earlier = interval(0, 3_600)
+        let latest = interval(14_400, 18_000, stage: .rem)
+
+        let session = try XCTUnwrap(SleepSession.latest(from: [latest, earlier]))
+
+        XCTAssertEqual(session.window, latest.start...latest.end)
+        XCTAssertEqual(SleepCalculator.summarize(session.intervals).totalAsleepMinutes, 60)
+    }
+
+    func testNestedSamplesDoNotSplitOrShortenSession() throws {
+        let outer = interval(0, 28_800, stage: .unspecified)
+        let early = interval(900, 1_800, stage: .deep)
+        let late = interval(24_000, 26_400, stage: .rem)
+
+        let session = try XCTUnwrap(SleepSession.latest(from: [late, outer, early]))
+
+        XCTAssertEqual(session.window, outer.start...outer.end)
+        XCTAssertEqual(session.intervals.count, 3)
+    }
+
     func testInvalidIntervalsAreIgnored() {
         let bad = SleepInterval(start: Date(timeIntervalSince1970: 1_700_003_600),
                                 end: Date(timeIntervalSince1970: 1_700_000_000), stage: .core)
