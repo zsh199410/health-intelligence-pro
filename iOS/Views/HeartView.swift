@@ -96,6 +96,9 @@ struct HeartView: View {
 struct ECGDetailView: View {
     let ecg: ECGSummary
     @EnvironmentObject private var health: HealthViewModel
+    @State private var trace: ECGWaveform?
+    @State private var loading = true
+    @State private var readFailed = false
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -109,20 +112,33 @@ struct ECGDetailView: View {
                 HealthCard {
                     VStack(alignment: .leading, spacing: 14) {
                         Text("ECG 波形").font(.headline).foregroundStyle(HealthTheme.ink)
-                        if health.isECGLoading {
+                        if loading {
                             ProgressView("读取心电信号…").frame(maxWidth: .infinity, minHeight: 170)
-                        } else if let points = health.ecgVoltages[ecg.id], !points.isEmpty {
-                            // The waveform is visual only; its meaning (the
-                            // classification and recording time above) is
-                            // already text, so VoiceOver skips the chart.
-                            Chart(points) { point in
-                                LineMark(x: .value("时间 / 秒", point.seconds),
-                                         y: .value("电压 / mV", point.millivolts))
-                                    .lineStyle(StrokeStyle(lineWidth: 1.1))
-                                    .foregroundStyle(HealthTheme.coral)
-                            }.frame(height: 230).accessibilityHidden(true)
-                            Text("信号已抽样用于图表显示，非医学级校准导出。")
-                                .font(.caption2).foregroundStyle(HealthTheme.muted)
+                        } else if readFailed {
+                            EmptyHealthState(title: "读取 ECG 波形失败", detail: "请检查健康访问或记录的采样时间，再打开此记录。")
+                        } else if let trace {
+                            if trace.segments.isEmpty {
+                                Text("采样中断过多，无法绘制完整概览。")
+                            } else {
+                                Chart {
+                                    ForEach(trace.segments) { segment in
+                                        ForEach(segment.points) { point in
+                                            if segment.points.count == 1 {
+                                                PointMark(x: .value("时间 / 秒", point.seconds),
+                                                          y: .value("电压 / mV", point.millivolts))
+                                            } else {
+                                                LineMark(x: .value("时间 / 秒", point.seconds),
+                                                         y: .value("电压 / mV", point.millivolts),
+                                                         series: .value("连续片段", segment.id))
+                                            }
+                                        }
+                                    }
+                                }
+                                .foregroundStyle(HealthTheme.coral)
+                                .frame(height: 230).accessibilityHidden(true)
+                            }
+                            Text("原始采样 \(trace.samples.count) 点 · 时间间断 \(trace.gapCount) 处")
+                                .font(.caption).foregroundStyle(HealthTheme.muted)
                         } else {
                             EmptyHealthState(title: "没有可读取的波形", detail: "检查 HealthKit ECG 读取授权和原始数据可用性。")
                         }
@@ -134,7 +150,20 @@ struct ECGDetailView: View {
         }
         .background(HealthTheme.canvas.ignoresSafeArea())
         .navigationTitle("ECG 详情")
-        .task(id: ecg.id) { await health.loadECGVoltage(for: ecg.id) }
+        .task(id: ecg.id) {
+            loading = true
+            trace = nil
+            readFailed = false
+            do {
+                let result = try await health.ecgWaveform(for: ecg.id)
+                guard !Task.isCancelled else { return }
+                trace = result
+            } catch {
+                guard !Task.isCancelled else { return }
+                readFailed = true
+            }
+            loading = false
+        }
     }
 }
 

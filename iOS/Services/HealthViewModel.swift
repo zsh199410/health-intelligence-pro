@@ -22,8 +22,6 @@ final class HealthViewModel: ObservableObject {
     @Published private(set) var failedMetricIDs: [String] = []
     @Published private(set) var ecgs: [ECGSummary] = []
     @Published private(set) var heartEvents: [HeartEvent] = []
-    @Published private(set) var ecgVoltages: [UUID: [ECGVoltagePoint]] = [:]
-    @Published private(set) var isECGLoading = false
     @Published private(set) var isLoading = false
     @Published private(set) var hasRequestedAccess = false
     @Published var message: String?
@@ -109,12 +107,8 @@ final class HealthViewModel: ObservableObject {
         lastRefreshedAt = .now
     }
 
-    func loadECGVoltage(for id: UUID) async {
-        guard ecgVoltages[id] == nil, !isECGLoading else { return }
-        isECGLoading = true
-        defer { isECGLoading = false }
-        do { ecgVoltages[id] = try await repository.ecgVoltagePoints(id: id) }
-        catch { message = "读取 ECG 波形失败：\(error.localizedDescription)" }
+    func ecgWaveform(for id: UUID) async throws -> ECGWaveform? {
+        try await repository.ecgWaveform(id: id)
     }
 
     func loadTrend(for metric: HealthMetric, days: Int = 30) async {
