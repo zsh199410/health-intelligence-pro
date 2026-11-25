@@ -1,0 +1,47 @@
+name: Verify existing Build 22 IPA
+on:
+  push:
+    branches: ['codex/verify-ipa-build-22']
+    paths: ['.github/workflows/verify-built-ipa.yml']
+
+permissions:
+  actions: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    outputs:
+      sha256: ${{ steps.inspect.outputs.sha256 }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: iphone-unsigned-signing-input
+          github-token: ${{ github.token }}
+          run-id: 45552674186
+          path: candidate
+      - id: inspect
+        working-directory: candidate
+        run: |
+          set -euo pipefail
+          ipa=HealthIntelligence-iPhone-UNSIGNED.ipa
+          sha256sum --check SHA256SUMS.txt
+          grep -Fx 'Source commit: dad8da3722ce3e8648abf89febf20fb0c8a51097' README-SIGN-BEFORE-INSTALL.txt
+          python3 - <<'PY'
+          import plistlib, zipfile
+          with zipfile.ZipFile("HealthIntelligence-iPhone-UNSIGNED.ipa") as archive:
+              assert archive.testzip() is None
+              root = "Payload/HealthIntelligence.app/"
+              info = plistlib.loads(archive.read(root + "Info.plist"))
+              assert info["CFBundleShortVersionString"] == "2.0.0"
+              assert info["CFBundleVersion"] == "22"
+              assert info["CFBundleIdentifier"] == "app.rose4354.lettuce4008"
+              assert archive.getinfo(root + info["CFBundleExecutable"]).file_size > 0
+          PY
+          digest=$(sha256sum "$ipa" | cut -d ' ' -f 1)
+          echo "sha256=$digest" >> "$GITHUB_OUTPUT"
+  receipt:
+    needs: inspect
+    runs-on: ubuntu-latest
+    name: IPA SHA256 ${{ needs.inspect.outputs.sha256 }}
+    steps:
+      - run: echo 'Build 22 existing IPA verified.'
