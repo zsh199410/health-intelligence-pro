@@ -101,6 +101,36 @@ final class ScreenshotsTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["健康趋势卡片"].waitForExistence(timeout: 10))
     }
 
+    func testBuild26UpdateCenterOpens() {
+        launch(light: true, largeText: false)
+        let skip = app.buttons["跳过"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 10))
+        skip.tap()
+        let settings = app.buttons["设置与隐私"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 10))
+        settings.tap()
+        XCTAssertTrue(app.navigationBars["设置与隐私"].waitForExistence(timeout: 10))
+        // The About section sits below the fold in the settings Form.
+        let entry = app.buttons["update-center-entry"]
+        for _ in 0..<5 {
+            if entry.exists && entry.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(entry.isHittable)
+        entry.tap()
+        XCTAssertTrue(app.navigationBars["检查更新"].waitForExistence(timeout: 10))
+        let check = app.buttons["update-center-check-button"]
+        XCTAssertTrue(check.waitForExistence(timeout: 10))
+        check.tap()
+        XCTAssertTrue(app.staticTexts["有新版本"].waitForExistence(timeout: 10))
+        let download = app.buttons["update-center-download-button"]
+        XCTAssertTrue(download.waitForExistence(timeout: 10))
+        download.tap()
+        XCTAssertTrue(app.staticTexts["完整性校验通过"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["分享至 LCsign"].exists)
+        capture("update-center", prefix: "light")
+    }
+
     private func launch(light: Bool, largeText: Bool) {
         app = XCUIApplication()
         // Force the app process into light/dark via launch argument.
