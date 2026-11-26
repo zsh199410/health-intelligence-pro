@@ -43,6 +43,7 @@ public struct RecoveryLoadReport: Sendable {
         public let trainingLoad: Double?
     }
 
+    public let calendar: Calendar
     public let asOf: Date
     public let days: [Day]
     public let sleepTargetMinutes: Double?
@@ -62,6 +63,7 @@ public struct RecoveryLoadReport: Sendable {
     public init(period: Period, asOf: Date, calendar: Calendar = .current, targetMinutes: Double?,
                 sleep: [SleepInterval], confirmedSleepDays: Set<Date>,
                 workouts: [RatedWorkout], confirmedWorkoutDays: Set<Date>) {
+        self.calendar = calendar
         self.asOf = asOf
         let target = targetMinutes.flatMap { $0.isFinite && $0 > 0 && $0 <= 1440 ? $0 : nil }
         sleepTargetMinutes = target
