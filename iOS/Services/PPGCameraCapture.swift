@@ -135,6 +135,8 @@ final class PPGCameraCapture: NSObject, ObservableObject, AVCaptureVideoDataOutp
         let width = CVPixelBufferGetWidth(buffer)
         let height = CVPixelBufferGetHeight(buffer)
         let rowBytes = CVPixelBufferGetBytesPerRow(buffer)
+        var leftSum = 0, topSum = 0
+        var leftCount = 0, topCount = 0
         var sum = 0
         var green = 0
         var blue = 0
@@ -148,11 +150,15 @@ final class PPGCameraCapture: NSObject, ObservableObject, AVCaptureVideoDataOutp
                 green += Int(pixels[offset + 1])
                 blue += Int(pixels[offset])
                 sum += red
+                if x < width / 2 { leftSum += red; leftCount += 1 }
+                if y < height / 2 { topSum += red; topCount += 1 }
                 if red == 0 || red == 255 { clipped += 1 }
                 count += 1
             }
         }
-        guard count > 0 else { return }
+        guard leftCount > 0, topCount > 0, count > leftCount, count > topCount else { return }
+        let horizontal = Double(leftSum) / Double(leftCount) - Double(sum - leftSum) / Double(count - leftCount)
+        let vertical = Double(topSum) / Double(topCount) - Double(sum - topSum) / Double(count - topCount)
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds
         guard timestamp.isFinite else { finish("相机帧时间异常，请重测。"); return }
         // A red-dominant, illuminated ROI is a contact heuristic, not a
@@ -162,7 +168,8 @@ final class PPGCameraCapture: NSObject, ObservableObject, AVCaptureVideoDataOutp
         }
         frames.append(PPGCameraFrame(timestamp: timestamp,
                                      redLevel: Double(sum) / Double(255 * count),
-                                     clippedFraction: Double(clipped) / Double(count)))
+                                     clippedFraction: Double(clipped) / Double(count),
+                                     spatialContrast: SIMD2(horizontal, vertical) / 510))
         if lastPreviewTime == nil || timestamp - (lastPreviewTime ?? timestamp) >= 0.2 {
             lastPreviewTime = timestamp
             let visible = Array(frames.filter { timestamp - $0.timestamp <= 4 })
@@ -200,6 +207,7 @@ final class PPGCameraCapture: NSObject, ObservableObject, AVCaptureVideoDataOutp
         case .insufficientDuration: return "有效采集时间不足，请重试。"
         case .irregularTiming: return "采样不连续，请保持设备静止后重试。"
         case .excessiveClipping: return "画面过亮或过暗，请轻轻调整指尖位置。"
+        case .unstableContact: return "指尖区域的亮度变化不一致，请调整覆盖位置并保持静止后重测。"
         case .flatSignal: return "未观察到足够的信号变化，请调整指尖位置。"
         }
     }
