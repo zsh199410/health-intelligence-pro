@@ -127,12 +127,17 @@ final class ScreenshotsTests: XCTestCase {
         // already-selected tab is a no-op, so extra taps are harmless;
         // the caller's content assertion still decides the outcome if
         // the switch never lands.
+        // NOTE (#27 root cause): ReportView's period Picker also exposes a
+        // "今日" button, so a global app.buttons[label] query matches two
+        // elements and the tap fails ("Multiple matching elements found").
+        // Scope the query to the tab bar; never use firstMatch to paper
+        // over the duplicate.
         for _ in 0..<3 {
-            let tab = app.buttons[label]
+            let tab = app.tabBars.buttons[label]
             XCTAssertTrue(tab.waitForExistence(timeout: 10), "tab \(label) missing")
             tab.tap()
             Thread.sleep(forTimeInterval: 1)
-            if app.buttons[label].isSelected {
+            if app.tabBars.buttons[label].isSelected {
                 return
             }
         }

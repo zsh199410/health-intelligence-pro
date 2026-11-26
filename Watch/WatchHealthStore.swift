@@ -86,11 +86,12 @@ final class WatchHealthStore: ObservableObject {
 
     private func latestSleepIntervals() async throws -> [SleepInterval] {
         guard let type = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) else { return [] }
-        let from = Calendar.current.date(byAdding: .hour, value: -36, to: Date())!
+        let now = Date()
+        let from = now.addingTimeInterval(-36 * 3600)
         let samples: [HKCategorySample] = try await withCheckedThrowingContinuation { continuation in
             let query = HKSampleQuery(sampleType: type,
-                                      predicate: HKQuery.predicateForSamples(withStart: from, end: Date()),
-                                      limit: 300,
+                                      predicate: HKQuery.predicateForSamples(withStart: from, end: now),
+                                      limit: HKObjectQueryNoLimit,
                                       sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)]) { _, samples, error in
                 if let error { continuation.resume(throwing: error) }
                 else { continuation.resume(returning: samples?.compactMap { $0 as? HKCategorySample } ?? []) }
@@ -108,13 +109,17 @@ final class WatchHealthStore: ObservableObject {
             case .asleepUnspecified: stage = .unspecified
             default: return nil
             }
-            return SleepInterval(start: item.startDate, end: item.endDate, stage: stage)
+            let start = max(from, item.startDate)
+            let end = min(now, item.endDate)
+            guard start < end else { return nil }
+            return SleepInterval(start: start, end: end, stage: stage)
         }
     }
 
     private func latest(_ type: HKQuantityType) async throws -> HKQuantitySample? {
         try await withCheckedThrowingContinuation { continuation in
-            let query = HKSampleQuery(sampleType: type, predicate: nil, limit: 1,
+            let predicate = HKQuery.predicateForSamples(withStart: nil, end: .now, options: .strictEndDate)
+            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: 1,
                                      sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)]) {
                 _, samples, error in
                 if let error { continuation.resume(throwing: error) }

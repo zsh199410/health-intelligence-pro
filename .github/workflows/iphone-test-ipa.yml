@@ -12,6 +12,8 @@ permissions:
 jobs:
   build-unsigned-iphone:
     runs-on: macos-latest
+    outputs:
+      ipa_sha256: ${{ steps.package.outputs.ipa_sha256 }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -62,6 +64,7 @@ jobs:
             build 2>&1 | tee iphone-device-build.log
 
       - name: Package unsigned iPhone-only IPA for private local signing
+        id: package
         run: |
           set -euo pipefail
           app="derived/Build/Products/Release-iphoneos/HealthIntelligence.app"
@@ -117,6 +120,8 @@ jobs:
             cat dist/SHA256SUMS.txt
             printf '```\n'
           } >> "$GITHUB_STEP_SUMMARY"
+          (cd dist && shasum -a 256 -c SHA256SUMS.txt)
+          echo "ipa_sha256=$(cut -d ' ' -f 1 dist/SHA256SUMS.txt)" >> "$GITHUB_OUTPUT"
           ls -lh dist/HealthIntelligence-iPhone-UNSIGNED.ipa dist/SHA256SUMS.txt
 
       - name: Upload iPhone signing input
@@ -139,3 +144,11 @@ jobs:
           path: iphone-device-build.log
           if-no-files-found: ignore
           retention-days: 7
+
+
+  receipt:
+    needs: build-unsigned-iphone
+    runs-on: ubuntu-latest
+    name: IPA SHA256 ${{ needs.build-unsigned-iphone.outputs.ipa_sha256 }}
+    steps:
+      - run: echo 'Unsigned iPhone artifact uploaded.'

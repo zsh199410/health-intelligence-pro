@@ -59,6 +59,22 @@ extension HealthCoreTests {
         XCTAssertEqual(result.minutesAwake, 5)
     }
 
+    func testDenseOverlappingSourcesKeepEntireSessionAndRealGaps() {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        func interval(_ a: Int, _ b: Int, _ stage: SleepStage) -> SleepInterval {
+            SleepInterval(start: start.addingTimeInterval(Double(a * 60)),
+                          end: start.addingTimeInterval(Double(b * 60)), stage: stage)
+        }
+        let minuteSamples = (0..<480).map { interval($0, $0 + 1, .core) }
+        let samples = minuteSamples + minuteSamples + [interval(60, 90, .deep), interval(481, 482, .core)]
+        let segments = SleepCalculator.segments(samples.reversed())
+        XCTAssertEqual(segments, [
+            interval(0, 60, .core), interval(60, 90, .deep), interval(90, 480, .core),
+            interval(481, 482, .core)
+        ])
+        XCTAssertEqual(SleepCalculator.summarize(samples).totalAsleepMinutes, 481)
+    }
+
     func testInvalidAndEmptyIntervals() {
         let start = Date(timeIntervalSince1970: 1_700_000_000)
         let result = SleepCalculator.summarize([

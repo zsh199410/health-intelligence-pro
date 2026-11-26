@@ -1,98 +1,93 @@
 import SwiftUI
+import Charts
 import HealthCore
 
 struct SleepView: View {
     @EnvironmentObject private var health: HealthViewModel
-    private let stages: [(SleepStage, Color)] = [
-        (.deep, HealthTheme.stageColor(.deep)), (.core, HealthTheme.stageColor(.core)),
-        (.rem, HealthTheme.stageColor(.rem)), (.unspecified, HealthTheme.stageColor(.unspecified)), (.awake, HealthTheme.stageColor(.awake))
-    ]
-    /// The statistic shown is the latest sample inside the latest sleep
-    /// session ("夜间最近一次"), never a daytime reading.
-    private var nightSubtitle: String {
-        guard let window = health.sleepWindow else { return "暂无睡眠记录" }
-        let start = window.lowerBound.formatted(.dateTime.month().day().hour().minute())
-        let end = window.upperBound.formatted(.dateTime.month().day().hour().minute())
-        return "本次睡眠 \(start) – \(end) · 夜间最近一次"
-    }
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @ScaledMetric(relativeTo: .body) private var plotHeight = 148.0
+    private let stages: [SleepStage] = [.awake, .rem, .core, .deep, .unspecified]
+    private let dateStyle = Date.FormatStyle.dateTime.month().day().hour().minute().locale(Locale(identifier: "zh_CN"))
+
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("睡眠，是身体的修复时间")
-                            .font(.title2.bold()).foregroundStyle(HealthTheme.ink)
-                        Text("最近 36 小时的已有分期记录")
-                            .font(.subheadline).foregroundStyle(HealthTheme.muted)
-                    }
-                    HealthCard {
-                        VStack(alignment: .leading, spacing: 20) {
-                            HStack {
-                                HealthPill(title: "睡眠分期", icon: "moon.stars.fill", tint: HealthTheme.indigo)
-                                Spacer()
-                                Text("真实记录").font(.caption2).foregroundStyle(HealthTheme.muted)
-                            }
-                            if let summary = health.sleep, summary.totalAsleepMinutes > 0 {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("总睡眠").font(.caption).foregroundStyle(HealthTheme.muted)
-                                    Text("\(summary.totalAsleepMinutes / 60) 小时 \(summary.totalAsleepMinutes % 60) 分")
-                                        .font(.system(size: 36, weight: .bold, design: .rounded)).foregroundStyle(HealthTheme.ink)
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("睡眠，是身体的修复时间")
+                        .font(.title2.bold()).foregroundStyle(HealthTheme.ink)
+                    if let summary = health.sleep, let window = health.sleepWindow {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("最近一次睡眠").font(.headline)
+                            Text("\(summary.totalAsleepMinutes / 60) 小时 \(summary.totalAsleepMinutes % 60) 分")
+                                .font(.largeTitle.bold()).monospacedDigit()
+                            Text("\(window.lowerBound.formatted(dateStyle)) 至 \(window.upperBound.formatted(dateStyle))")
+                                .font(.subheadline).foregroundStyle(HealthTheme.muted)
+                        }
+                        HealthCard {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("睡眠分期").font(.headline)
+                                Chart(health.sleepSegments, id: \.start) { segment in
+                                    BarMark(
+                                        xStart: .value("开始", segment.start),
+                                        xEnd: .value("结束", segment.end),
+                                        y: .value("分期", segment.stage.rawValue)
+                                    )
+                                    .foregroundStyle(HealthTheme.stageColor(segment.stage))
+                                    .accessibilityLabel(segment.stage.rawValue)
+                                    .accessibilityValue("\(segment.start.formatted(dateStyle)) 至 \(segment.end.formatted(dateStyle))")
                                 }
-                                // Decorative bar: the legend below carries the
-                                // same stage minutes as text, so VoiceOver skips it.
-                                GeometryReader { geometry in
-                                    HStack(spacing: 3) {
-                                        ForEach(stages, id: \.0) { entry in
-                                            let stage = entry.0
-                                            let tint = entry.1
-                                            let mins = summary.minutesByStage[stage] ?? 0
-                                            if mins > 0 {
-                                                RoundedRectangle(cornerRadius: 4)
-                                                    .fill(tint)
-                                                    .frame(width: max(1, (geometry.size.width - 12) * CGFloat(mins) / CGFloat(max(1, summary.totalAsleepMinutes + summary.minutesAwake))))
-                                            }
-                                        }
-                                    }
-                                }.frame(height: 15).accessibilityHidden(true)
-                                ForEach(stages, id: \.0) { entry in
-                                    let stage = entry.0
-                                    let tint = entry.1
-                                    HStack {
-                                        Circle().fill(tint).frame(width: 9, height: 9)
-                                        Text(stage.rawValue).font(.subheadline).foregroundStyle(HealthTheme.ink)
-                                        Spacer()
-                                        Text("\(summary.minutesByStage[stage] ?? 0) 分钟")
-                                            .font(.subheadline.monospacedDigit()).foregroundStyle(HealthTheme.muted)
+                                .chartXScale(domain: window)
+                                .chartYScale(domain: stages.map(\.rawValue))
+                                .chartXAxis {
+                                    AxisMarks(values: [window.lowerBound, window.upperBound]) {
+                                        AxisValueLabel(format: .dateTime.hour().minute().locale(Locale(identifier: "zh_CN")))
                                     }
                                 }
-                            } else {
-                                EmptyHealthState(title: "尚无可读取睡眠记录", detail: "佩戴手表睡眠后再刷新；检查健康授权和睡眠专注设置。", symbol: "moon.zzz.fill")
-                            }
-                            Text("数据按时间区间去重；多设备冲突可能影响精度。睡眠分期不用于诊断睡眠疾病。")
-                                .font(.caption2).foregroundStyle(HealthTheme.muted)
-                        }
-                    }
-                    SectionHeadline(title: "夜间生命体征", subtitle: nightSubtitle)
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                        ForEach(["oxygenSaturation", "respiratoryRate", "sleepingWristTemperature", "appleSleepingBreathingDisturbances"], id: \.self) { id in
-                            if let metric = HealthCatalog.byID[id] {
-                                NavigationLink {
-                                    NightReadingDetail(metric: metric)
-                                } label: {
-                                    MetricTile(metric: metric, reading: health.nightReadings[id], emptyText: "无夜间记录")
-                                }.buttonStyle(.plain)
+                                .frame(height: plotHeight)
+                                ForEach(stages, id: \.self) { stage in
+                                    LabeledContent(stage.rawValue, value: "\(summary.minutesByStage[stage] ?? 0) 分钟")
+                                }
+                                Text("空白时段缺少分期记录。重叠区间只计算一次，多来源分期冲突可能影响结果。")
+                                    .font(.footnote).foregroundStyle(HealthTheme.muted)
                             }
                         }
+                        Text("夜间生命体征").font(.headline)
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: typeSize.isAccessibilitySize ? 1 : 2), spacing: 12) {
+                            ForEach(["oxygenSaturation", "respiratoryRate", "sleepingWristTemperature", "appleSleepingBreathingDisturbances"], id: \.self) { id in
+                                if let metric = HealthCatalog.byID[id] {
+                                    NavigationLink {
+                                        NightReadingDetail(metric: metric)
+                                    } label: {
+                                        MetricTile(metric: metric, reading: health.nightReadings[id],
+                                                   emptyText: health.failedNightMetricIDs.contains(id) ? "读取失败" : "无夜间记录")
+                                    }.buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    } else {
+                        sleepStatus
                     }
-                    HealthCard {
-                        Label("呼吸扰动不等同于睡眠呼吸暂停诊断；具体通知以苹果健康的系统记录为准。", systemImage: "info.circle")
-                            .font(.footnote).foregroundStyle(HealthTheme.muted)
-                    }
-                }.padding(18)
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(18)
             }
             .background(HealthTheme.canvas.ignoresSafeArea())
             .navigationTitle("睡眠健康")
             .refreshable { await health.refresh() }
+        }
+    }
+
+    @ViewBuilder private var sleepStatus: some View {
+        if !health.isHealthAvailable {
+            EmptyHealthState(title: "健康数据不可用", detail: "此设备无法读取 Apple 健康数据。", symbol: "moon.zzz.fill")
+        } else if health.isLoading {
+            ProgressView("正在读取睡眠记录")
+        } else if health.sleepReadFailed {
+            EmptyHealthState(title: "睡眠数据读取失败", detail: "请解锁设备后下拉刷新。", symbol: "exclamationmark.triangle")
+        } else if !health.hasRequestedAccess && health.lastRefreshedAt == nil {
+            EmptyHealthState(title: "连接 Apple 健康", detail: "连接后可查看最近一次睡眠的时长、分期和夜间体征。", symbol: "moon.zzz.fill")
+            Button("请求健康访问") { Task { await health.connectAndRefresh() } }
+                .buttonStyle(.borderedProminent)
+        } else {
+            EmptyHealthState(title: "暂无可读取的睡眠记录", detail: "最近 36 小时内未读取到睡眠分期。可在 Apple 健康中检查睡眠记录与共享权限。", symbol: "moon.zzz.fill")
         }
     }
 }
@@ -110,6 +105,8 @@ private struct NightReadingDetail: View {
                         .dateTime.year().month().day().hour().minute().locale(Locale(identifier: "zh_CN"))
                     ))
                     LabeledContent("数据来源", value: reading.source)
+                } else if health.failedNightMetricIDs.contains(metric.id) {
+                    Text("本次读取失败，请返回睡眠页面并下拉刷新。")
                 } else {
                     Text("本次睡眠期间暂无可读取的记录。")
                 }

@@ -5,19 +5,9 @@ public enum SleepCalculator {
     /// With no source identifier in the input, a stage precedence is used when sources conflict:
     /// awake > deep > REM > core > unspecified. This is NOT a clinical stage arbitration.
     public static func summarize(_ intervals: [SleepInterval]) -> SleepSummary {
-        let valid = intervals.filter { $0.end > $0.start }
         var secondsByStage: [SleepStage: TimeInterval] = [:]
-        for stage in SleepStage.allCases { secondsByStage[stage] = 0 }
-        let timePoints = Array(Set(valid.flatMap { [$0.start, $0.end] })).sorted()
-        if timePoints.count >= 2 {
-            for i in 0..<(timePoints.count - 1) {
-                let start = timePoints[i], end = timePoints[i + 1]
-                guard end > start else { continue }
-                let active = valid.filter { $0.start < end && $0.end > start }
-                if let winningStage = active.map(\.stage).max(by: { priority($0) < priority($1) }) {
-                    secondsByStage[winningStage, default: 0] += end.timeIntervalSince(start)
-                }
-            }
+        for segment in segments(intervals) {
+            secondsByStage[segment.stage, default: 0] += segment.end.timeIntervalSince(segment.start)
         }
         var minutes: [SleepStage: Int] = [:]
         for stage in SleepStage.allCases { minutes[stage] = Int(((secondsByStage[stage] ?? 0) / 60).rounded()) }
@@ -32,15 +22,22 @@ public enum SleepCalculator {
     /// collapsing them to minutes. Adjacent pieces with the same stage
     /// are merged. Returns [] when there is no usable interval.
     public static func segments(_ intervals: [SleepInterval]) -> [SleepInterval] {
-        let valid = intervals.filter { $0.end > $0.start }
-        let timePoints = Array(Set(valid.flatMap { [$0.start, $0.end] })).sorted()
-        guard timePoints.count >= 2 else { return [] }
+        // Track the count for each stage, since duplicate sources can overlap.
+        // Applying all deltas at a timestamp preserves half-open interval semantics.
+        var changes: [Date: [SleepStage: Int]] = [:]
+        for interval in intervals where interval.end > interval.start {
+            changes[interval.start, default: [:]][interval.stage, default: 0] += 1
+            changes[interval.end, default: [:]][interval.stage, default: 0] -= 1
+        }
+        let boundaries = changes.keys.sorted()
+        let precedence: [SleepStage] = [.awake, .deep, .rem, .core, .unspecified]
+        var active: [SleepStage: Int] = [:]
         var pieces: [SleepInterval] = []
-        for i in 0..<(timePoints.count - 1) {
-            let start = timePoints[i], end = timePoints[i + 1]
-            guard end > start else { continue }
-            let active = valid.filter { $0.start < end && $0.end > start }
-            guard let winningStage = active.map(\.stage).max(by: { priority($0) < priority($1) }) else { continue }
+        for (start, end) in zip(boundaries, boundaries.dropFirst()) {
+            for (stage, delta) in changes[start, default: [:]] {
+                active[stage, default: 0] += delta
+            }
+            guard let winningStage = precedence.first(where: { active[$0, default: 0] > 0 }) else { continue }
             if let last = pieces.last, last.stage == winningStage, last.end == start {
                 pieces[pieces.count - 1] = SleepInterval(start: last.start, end: end, stage: winningStage)
             } else {
@@ -48,15 +45,5 @@ public enum SleepCalculator {
             }
         }
         return pieces
-    }
-
-    private static func priority(_ stage: SleepStage) -> Int {
-        switch stage {
-        case .unspecified: return 0
-        case .core: return 1
-        case .rem: return 2
-        case .deep: return 3
-        case .awake: return 4
-        }
     }
 }
