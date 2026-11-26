@@ -53,7 +53,12 @@ final class ScreenshotsTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["指尖脉搏信号"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["开始采集"].exists)
         XCTAssertTrue(app.staticTexts["采集状态，等待开始采集"].exists)
+        XCTAssertTrue(app.staticTexts["正确放置手指"].exists)
         capture("ppg-idle", prefix: "light")
+        app.buttons["如何放置手指？"].tap()
+        XCTAssertTrue(app.navigationBars["如何放置手指？"].waitForExistence(timeout: 5))
+        app.buttons["完成"].tap()
+        XCTAssertTrue(app.buttons["开始采集"].waitForExistence(timeout: 5))
     }
 
     private func launch(light: Bool, largeText: Bool) {
