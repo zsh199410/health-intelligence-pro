@@ -59,8 +59,25 @@ final class SleepHistoryTests: XCTestCase {
         // 2026-11-12 22:00 -> 2026-11-14 06:00; only 00:00-06:00 on 11-14 is in window.
         let long = interval(date(2026, 11, 12, 22), date(2026, 11, 14, 6))
         let days = SleepHistory.days(from: [long], days: 7, endingAt: now, calendar: calendar)
+        XCTAssertEqual(days.count, 7)
+        XCTAssertEqual(days.first?.date, date(2026, 11, 14, 0))
+        XCTAssertEqual(days.last?.date, date(2026, 11, 20, 0))
         XCTAssertEqual(days.first(where: { $0.date == date(2026, 11, 14, 0) })?.asleepMinutes, 360)
-        XCTAssertEqual(days.first(where: { $0.date == date(2026, 11, 13, 0) })?.asleepMinutes, 0)
+        XCTAssertEqual(days.first(where: { $0.date == date(2026, 11, 15, 0) })?.hasRecord, false)
+        // 2026-11-13 is outside the 7-day window (2026-11-14 .. 2026-11-20),
+        // so no day is returned for it; the implementation correctly returns nil.
+        XCTAssertNil(days.first(where: { $0.date == date(2026, 11, 13, 0) }))
+    }
+
+    func testCrossMidnightMultiStageNightAttributedToWakeDate() {
+        let intervals = [
+            interval(date(2026, 11, 19, 22), date(2026, 11, 19, 23, 30), .core),
+            interval(date(2026, 11, 19, 23, 30), date(2026, 11, 20, 2), .deep),
+            interval(date(2026, 11, 20, 2), date(2026, 11, 20, 7), .rem)
+        ]
+        let days = SleepHistory.days(from: intervals, days: 7, endingAt: now, calendar: calendar)
+        XCTAssertEqual(days.first(where: { $0.date == date(2026, 11, 20, 0) })?.asleepMinutes, 540)
+        XCTAssertEqual(days.first(where: { $0.date == date(2026, 11, 19, 0) })?.asleepMinutes, 0)
     }
 
     func testZeroDaysReturnsEmpty() {
