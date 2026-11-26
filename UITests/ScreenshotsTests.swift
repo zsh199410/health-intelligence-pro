@@ -131,6 +131,21 @@ final class ScreenshotsTests: XCTestCase {
         capture("update-center", prefix: "light")
     }
 
+    func testBuild26RecoveryPageOpens() {
+        launch(light: true, largeText: false)
+        let skip = app.buttons["跳过"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 10))
+        skip.tap()
+
+        tapTab("心脏")
+        let entry = app.buttons["cardiovascular-recovery-entry"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 10))
+        entry.tap()
+        XCTAssertTrue(app.navigationBars["心血管恢复"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["运动后一分钟心率恢复"].waitForExistence(timeout: 10))
+        capture("recovery", prefix: "light")
+    }
+
     private func launch(light: Bool, largeText: Bool) {
         app = XCUIApplication()
         // Force the app process into light/dark via launch argument.
