@@ -8,6 +8,12 @@ final class HealthViewModel: ObservableObject {
     @Published private(set) var trends: [String: [TrendPoint]] = [:]
     @Published private(set) var sleep: SleepSummary?
     @Published private(set) var sleepSegments: [SleepInterval] = []
+    /// Daily sleep totals for the past 7 calendar days, grouped by wake date.
+    @Published private(set) var sleepHistory: [SleepHistoryDay] = []
+    @Published private(set) var sleepHistoryFailed = false
+    /// Seven-day sleep timing regularity, same evaluation as the detail page.
+    @Published private(set) var sleepRegularity: SleepTimingVariation?
+    @Published private(set) var sleepRegularityFailed = false
     @Published private(set) var sleepReadFailed = false
     @Published private(set) var failedNightMetricIDs: Set<String> = []
     /// Latest sleep session window, derived from the same intervals that
@@ -121,6 +127,35 @@ final class HealthViewModel: ObservableObject {
     func loadTrend(for metric: HealthMetric, days: Int = 30) async {
         do { trends[metric.id] = try await repository.trend(metric, days: days) }
         catch { message = "读取趋势失败：\(error.localizedDescription)" }
+    }
+
+    func loadSleepHistory(days: Int = 7) async {
+        let calendar = Calendar.current
+        let now = Date()
+        let from = calendar.date(byAdding: .day, value: -(days + 1), to: calendar.startOfDay(for: now))!
+        do {
+            let intervals = try await repository.sleepIntervals(from: from, through: now)
+            sleepHistory = SleepHistory.days(from: intervals, days: days, endingAt: now, calendar: calendar)
+            sleepHistoryFailed = false
+        } catch {
+            sleepHistory = []
+            sleepHistoryFailed = true
+        }
+    }
+
+    func loadSleepRegularity() async {
+        let calendar = Calendar.current
+        let now = Date()
+        let start = SleepTimingVariation.reportStart(endingAt: now, calendar: calendar)
+        let from = calendar.date(byAdding: .day, value: -2, to: start)!
+        do {
+            let intervals = try await repository.sleepIntervals(from: from, through: now)
+            sleepRegularity = SleepTimingVariation.evaluate(intervals, endingAt: now, calendar: calendar)
+            sleepRegularityFailed = false
+        } catch {
+            sleepRegularity = nil
+            sleepRegularityFailed = true
+        }
     }
 
     func saveWeight(_ weight: Double) async -> Bool { await save { try await repository.saveWeight(weight) } }

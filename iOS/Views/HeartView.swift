@@ -37,6 +37,21 @@ struct HeartView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("ecg-center-entry")
+                    NavigationLink {
+                        CardiovascularRecoveryView()
+                    } label: {
+                        HealthCard {
+                            HStack {
+                                Label("心血管恢复", systemImage: "heart.circle")
+                                    .font(.headline)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(HealthTheme.muted)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("cardiovascular-recovery-entry")
                     SectionHeadline(title: "心血管指标", subtitle: "可点击任意指标查看来源与历史")
                     LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(metricIDs, id: \.self) { id in
