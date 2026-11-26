@@ -17,6 +17,9 @@ public struct DailyTrendProfile {
         self.values = values
     }
 
+    /// The last partial day's real aggregate, with no fallback to an older day.
+    public var todayValue: Double? { values[calendar.startOfDay(for: end)] }
+
     public func runs(days: Int) -> [[TrendPoint]] {
         var result: [[TrendPoint]] = []
         var run: [TrendPoint] = []

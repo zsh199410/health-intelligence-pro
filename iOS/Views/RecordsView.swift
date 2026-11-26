@@ -23,11 +23,18 @@ struct RecordsView: View {
                         Label("添加症状、用药或健康笔记", systemImage: "square.and.pencil")
                     }
                 }
+                Section {
+                    NavigationLink {
+                        PersonalTrendLibrary()
+                    } label: {
+                        Label("健康趋势卡片", systemImage: "chart.xyaxis.line")
+                    }
+                }
                 ForEach(MetricGroup.allCases) { group in
                     if !visibleMetrics(in: group).isEmpty {
                     Section(group.rawValue) {
                         ForEach(visibleMetrics(in: group)) { metric in
-                            NavigationLink { PersonalTrendCard(metric: metric) } label: {
+                            NavigationLink { MetricDetailView(metric: metric) } label: {
                                 HStack {
                                     Image(systemName: metric.symbol)
                                         .frame(width: 24)

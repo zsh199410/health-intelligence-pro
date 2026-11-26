@@ -24,6 +24,14 @@ final class DailyTrendProfileTests: XCTestCase {
         XCTAssertTrue(DailyTrendProfile(points: [], end: end, calendar: utc).runs(days: 90).isEmpty)
     }
 
+    func testTodayDoesNotUseYesterdaysBucketWhenMissing() {
+        let end = Date(timeIntervalSince1970: 100 * 86_400 + 3600)
+        let yesterday = TrendPoint(recordedAt: end.addingTimeInterval(-86_400), value: 12)
+        XCTAssertNil(DailyTrendProfile(points: [yesterday], end: end, calendar: utc).todayValue)
+        let today = TrendPoint(recordedAt: utc.startOfDay(for: end), value: 0)
+        XCTAssertEqual(DailyTrendProfile(points: [today, yesterday], end: end, calendar: utc).todayValue, 0)
+    }
+
     func testYesterdayMatchesDurationAcrossDSTOrRejectsImpossibleWindow() {
         var c = Calendar(identifier: .gregorian)
         c.timeZone = TimeZone(identifier: "America/New_York")!

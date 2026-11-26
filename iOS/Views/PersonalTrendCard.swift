@@ -2,46 +2,85 @@ import SwiftUI
 import Charts
 import HealthCore
 
-/// Reached from the metric rows of the Health Library.
-struct PersonalTrendCard: View {
-    let metric: HealthMetric
-    @State private var days = 7
-    @State private var snapshot: Snapshot?
-    @State private var failed = false
-
-    private struct Snapshot {
-        let profile: DailyTrendProfile
-        let reading: MetricReading?
-        let partialChange: Double?
-    }
+struct PersonalTrendLibrary: View {
+    private static let metrics = [
+        "restingHeartRate", "hrv", "sleepingWristTemperature", "timeInDaylight",
+        "oxygenSaturation", "respiratoryRate", "walkingSpeed", "walkingStepLength",
+        "walkingAsymmetryPercentage", "walkingDoubleSupportPercentage"
+    ].compactMap { HealthCatalog.byID[$0] }
+    @State private var selectedID = "restingHeartRate"
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                if let snapshot {
-                    MetricTile(metric: metric, reading: snapshot.reading)
-                    if let reading = snapshot.reading {
-                        LabeledContent("最近记录来源", value: reading.source)
-                        LabeledContent("采样时间", value: reading.recordedAt.formatted(
-                            .dateTime.year().month().day().hour().minute().locale(Locale(identifier: "zh_CN"))))
+                Picker("选择指标", selection: $selectedID) {
+                    ForEach(Self.metrics) { metric in
+                        Label(metric.name, systemImage: metric.symbol).tag(metric.id)
                     }
-                    HealthCard { trend(snapshot) }
-                    HealthCard { reference(snapshot.profile) }
-                } else if failed {
-                    EmptyHealthState(title: "趋势读取失败", detail: "下拉重新读取此指标。", symbol: "exclamationmark.triangle")
-                } else {
-                    ProgressView("正在读取健康趋势")
+                }
+                .pickerStyle(.menu)
+                if let metric = HealthCatalog.byID[selectedID] {
+                    PersonalTrendCard(metric: metric).id(metric.id)
                 }
             }.padding(18)
         }
+        .navigationTitle("健康趋势卡片")
         .background(HealthTheme.canvas.ignoresSafeArea())
-        .navigationTitle(metric.name)
-        .task(id: metric.id) { await load() }
-        .refreshable { await load() }
+    }
+}
+
+struct PersonalTrendCard: View {
+    let metric: HealthMetric
+    @State private var days = 7
+    @State private var snapshot: Snapshot?
+    @State private var isLoading = false
+
+    private struct Snapshot {
+        var profile: DailyTrendProfile?
+        var reading: MetricReading?
+        var partialChange: Double?
+        var readingFailed = false
+        var comparisonFailed = false
     }
 
-    private func trend(_ snapshot: Snapshot) -> some View {
-        let profile = snapshot.profile
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if let snapshot {
+                HealthCard {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label(metric.name, systemImage: metric.symbol).font(.headline)
+                        if let reading = snapshot.reading {
+                            Text("\(metric.display(reading.value)) \(metric.unitText)")
+                                .font(.largeTitle.bold()).monospacedDigit()
+                            LabeledContent("最近记录来源", value: reading.source)
+                            LabeledContent("采样时间", value: reading.recordedAt.formatted(
+                                .dateTime.year().month().day().hour().minute().locale(Locale(identifier: "zh_CN"))))
+                        } else {
+                            Text(snapshot.readingFailed ? "最近记录读取失败" : "暂无可读取记录")
+                                .foregroundStyle(HealthTheme.muted)
+                        }
+                    }
+                }
+                if let profile = snapshot.profile {
+                    HealthCard { trend(snapshot, profile: profile) }
+                    HealthCard { reference(profile) }
+                } else {
+                    EmptyHealthState(title: "趋势读取失败", detail: "历史曲线和个人基线暂不可用。", symbol: "exclamationmark.triangle")
+                }
+                if snapshot.readingFailed || snapshot.comparisonFailed || snapshot.profile == nil {
+                    Button("重新读取") {
+                        Task { await load() }
+                    }.disabled(isLoading)
+                }
+                NavigationLink("查看指标详情") { MetricDetailView(metric: metric) }
+            } else {
+                ProgressView("正在读取健康趋势")
+            }
+        }
+        .task(id: metric.id) { await load() }
+    }
+
+    private func trend(_ snapshot: Snapshot, profile: DailyTrendProfile) -> some View {
         let runs = profile.runs(days: days)
         let start = profile.calendar.date(byAdding: .day, value: 1 - days, to: profile.calendar.startOfDay(for: profile.end))!
         let count = runs.reduce(0) { $0 + $1.count }
@@ -72,7 +111,7 @@ struct PersonalTrendCard: View {
                 let unit = metric.unitText == "%" ? "百分点" : metric.unitText
                 LabeledContent("较昨日同期", value: "\(delta > 0 ? "+" : "")\(metric.display(delta)) \(unit)")
             } else {
-                LabeledContent("较昨日同期", value: "暂无可比记录")
+                LabeledContent("较昨日同期", value: snapshot.comparisonFailed ? "昨日数据读取失败" : "暂无可比记录")
             }
             Text("同期按本地零点起相同经过时长比较。数据来源为 Apple 健康汇总，\(profile.calendar.timeZone.identifier)。")
                 .font(.caption).foregroundStyle(HealthTheme.muted)
@@ -99,26 +138,37 @@ struct PersonalTrendCard: View {
     }
 
     @MainActor private func load() async {
+        guard !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
         let repository = HealthKitRepository()
         let end = Date()
         let calendar = Calendar.current
+        var result = Snapshot()
+        do {
+            result.reading = try await repository.reading(metric)
+        } catch {
+            result.readingFailed = true
+        }
+        guard !Task.isCancelled else { return }
         do {
             let points = try await repository.trend(metric, days: 90, endingAt: end, calendar: calendar)
-            let reading = try await repository.reading(metric)
-            var change: Double?
-            if let previous = DailyTrendProfile.previousCutoff(end: end, calendar: calendar) {
-                let today = try await repository.trend(metric, days: 1, endingAt: end, calendar: calendar)
-                let yesterday = try await repository.trend(metric, days: 1, endingAt: previous, calendar: calendar)
-                if let lhs = today.first?.value, let rhs = yesterday.first?.value { change = lhs - rhs }
-            }
-            try Task.checkCancellation()
-            snapshot = Snapshot(profile: DailyTrendProfile(points: points, end: end, calendar: calendar),
-                                reading: reading, partialChange: change)
-            failed = false
+            result.profile = DailyTrendProfile(points: points, end: end, calendar: calendar)
         } catch {
-            guard !Task.isCancelled else { return }
-            snapshot = nil
-            failed = true
+            result.profile = nil
         }
+        guard !Task.isCancelled else { return }
+        if let today = result.profile?.todayValue,
+           let cutoff = DailyTrendProfile.previousCutoff(end: end, calendar: calendar) {
+            do {
+                let previous = try await repository.trend(metric, days: 1, endingAt: cutoff, calendar: calendar)
+                let yesterday = DailyTrendProfile(points: previous, end: cutoff, calendar: calendar)
+                result.partialChange = yesterday.todayValue.map { today - $0 }
+            } catch {
+                result.comparisonFailed = true
+            }
+        }
+        guard !Task.isCancelled else { return }
+        snapshot = result
     }
 }
