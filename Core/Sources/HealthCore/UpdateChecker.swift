@@ -28,10 +28,12 @@ public enum UpdateChecker {
 }
 
 public enum UpdateIntegrity {
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     public static func sha256Hex(of data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     public static func verify(data: Data, expectedSHA256: String) -> Bool {
         sha256Hex(of: data).lowercased() == expectedSHA256.lowercased()
     }
