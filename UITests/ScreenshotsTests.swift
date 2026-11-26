@@ -51,8 +51,8 @@ final class ScreenshotsTests: XCTestCase {
         XCTAssertTrue(ppg.isHittable)
         ppg.tap()
         XCTAssertTrue(app.navigationBars["指尖脉搏信号"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["开始采集"].exists)
-        XCTAssertTrue(app.staticTexts["采集状态，等待开始采集"].exists)
+        XCTAssertTrue(app.buttons["开始采集"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["采集状态，等待开始采集"].waitForExistence(timeout: 10))
         capture("ppg-idle", prefix: "light")
     }
 
