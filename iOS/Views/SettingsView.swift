@@ -75,6 +75,12 @@ struct SettingsView: View {
                 Section("关于") {
                     LabeledContent("产品", value: "健康中枢 · Health Intelligence")
                     LabeledContent("版本", value: versionText)
+                    NavigationLink {
+                        UpdateCenterView()
+                    } label: {
+                        Label("检查更新", systemImage: "arrow.down.circle")
+                    }
+                    .accessibilityIdentifier("update-center-entry")
                     LabeledContent("健康数据", value: "HealthKit")
                     Text("非医疗器械，不用于疾病诊断或急救监护。")
                         .font(.footnote).foregroundStyle(HealthTheme.muted)
