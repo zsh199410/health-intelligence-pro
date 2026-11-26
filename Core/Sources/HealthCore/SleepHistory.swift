@@ -24,6 +24,12 @@ public struct SleepHistoryDay: Identifiable, Equatable, Sendable {
 /// asleep segment is reported with 0 minutes and `hasRecord == false`:
 /// missing data is never shown as a night of zero sleep, and no value is
 /// interpolated across missing days.
+/// A multi-stage night is attributed as a whole to its wake date (the end
+/// date of its last asleep segment): asleep segments less than 2 hours apart
+/// belong to one night, matching `SleepSession`'s 2-hour gap; a gap of
+/// 2 hours or more starts a new night, so segments ending before midnight
+/// count toward the wake date, not the day they started. Missing days are
+/// not filled in as zero-sleep nights.
 public enum SleepHistory {
     public static func days(from intervals: [SleepInterval], days: Int = 7,
                             endingAt now: Date = Date(),
@@ -32,6 +38,10 @@ public enum SleepHistory {
         let today = calendar.startOfDay(for: now)
         guard let windowStart = calendar.date(byAdding: .day, value: -(days - 1), to: today) else { return [] }
         var totals: [Date: Int] = [:]
+        // Clip each asleep segment to the window first, keeping per-segment
+        // rounding, then group segments less than 2 hours apart into one
+        // night and attribute the whole night to its wake date.
+        var clipped: [(start: Date, end: Date, minutes: Int)] = []
         for segment in SleepCalculator.segments(intervals) {
             guard segment.stage != .awake else { continue }
             let start = max(segment.start, windowStart)
@@ -39,8 +49,25 @@ public enum SleepHistory {
             guard end > start else { continue }
             let minutes = Int((end.timeIntervalSince(start) / 60).rounded())
             guard minutes > 0 else { continue }
-            let day = calendar.startOfDay(for: end)
-            totals[day, default: 0] += minutes
+            clipped.append((start: start, end: end, minutes: minutes))
+        }
+        let twoHours: TimeInterval = 2 * 60 * 60
+        var nightMinutes = 0
+        var nightEnd: Date?
+        for clippedSegment in clipped.sorted(by: { $0.start < $1.start }) {
+            if let currentNightEnd = nightEnd,
+               clippedSegment.start > currentNightEnd,
+               clippedSegment.start.timeIntervalSince(currentNightEnd) >= twoHours {
+                let day = calendar.startOfDay(for: currentNightEnd)
+                totals[day, default: 0] += nightMinutes
+                nightMinutes = 0
+            }
+            nightMinutes += clippedSegment.minutes
+            nightEnd = max(nightEnd ?? clippedSegment.end, clippedSegment.end)
+        }
+        if nightMinutes > 0, let currentNightEnd = nightEnd {
+            let day = calendar.startOfDay(for: currentNightEnd)
+            totals[day, default: 0] += nightMinutes
         }
         return (0..<days).compactMap { offset in
             calendar.date(byAdding: .day, value: offset, to: windowStart)
