@@ -61,6 +61,25 @@ final class ScreenshotsTests: XCTestCase {
         XCTAssertTrue(app.buttons["开始采集"].waitForExistence(timeout: 5))
     }
 
+    func testECGCenterAndTrendLibraryOpenWithoutMeasurements() {
+        launch(light: true, largeText: false)
+        let skip = app.buttons["跳过"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 10))
+        skip.tap()
+
+        tapTab("心脏")
+        let ecg = app.buttons["ecg-center-entry"]
+        XCTAssertTrue(ecg.waitForExistence(timeout: 10))
+        ecg.tap()
+        XCTAssertTrue(app.navigationBars["心电中心"].waitForExistence(timeout: 10))
+
+        tapTab("健康库")
+        let trends = app.buttons["健康趋势卡片"]
+        XCTAssertTrue(trends.waitForExistence(timeout: 10))
+        trends.tap()
+        XCTAssertTrue(app.navigationBars["健康趋势卡片"].waitForExistence(timeout: 10))
+    }
+
     private func launch(light: Bool, largeText: Bool) {
         app = XCUIApplication()
         // Force the app process into light/dark via launch argument.
