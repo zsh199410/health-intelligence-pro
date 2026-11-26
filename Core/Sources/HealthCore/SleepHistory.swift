@@ -26,7 +26,7 @@ public struct SleepHistoryDay: Identifiable, Equatable, Sendable {
 /// interpolated across missing days.
 public enum SleepHistory {
     public static func days(from intervals: [SleepInterval], days: Int = 7,
-                            endingAt now: Date = .now,
+                            endingAt now: Date = Date(),
                             calendar: Calendar = .current) -> [SleepHistoryDay] {
         guard days > 0 else { return [] }
         let today = calendar.startOfDay(for: now)
