@@ -51,7 +51,7 @@ struct SleepTimingVariationView: View {
         } catch {
             guard !Task.isCancelled else { return }
             result = nil
-            error = true
+            self.error = true
         }
     }
 }
