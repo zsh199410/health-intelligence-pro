@@ -103,7 +103,6 @@ struct SleepView: View {
             EmptyHealthState(title: "暂无可读取的睡眠记录", detail: "最近 36 小时内未读取到睡眠分期。可在 Apple 健康中检查睡眠记录与共享权限。", symbol: "moon.zzz.fill")
         }
     }
-}
 
     @ViewBuilder private var sleepHistorySection: some View {
         SectionHeadline(title: "近 7 日睡眠时长", subtitle: "按醒来日期归组，缺失不补算")
@@ -163,6 +162,7 @@ struct SleepView: View {
             }
         }
     }
+}
 
 private struct NightReadingDetail: View {
     let metric: HealthMetric
