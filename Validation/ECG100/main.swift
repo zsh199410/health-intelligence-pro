@@ -30,6 +30,8 @@ var rejected = 0, windows = 0
 var rrErrors = [Double]()
 var timingErrors = [Double]()
 var truePositive = 0
+var couplingByType = [Int: [Double]]()
+var followingByType = [Int: [Double]]()
 var matchedByType = [Int: Int]()
 for start in stride(from: 0, to: signal.count / 3, by: window) {
     windows += 1
@@ -53,7 +55,12 @@ for start in stride(from: 0, to: signal.count / 3, by: window) {
         while j < expected.count && expected[j] < sample - 36 { j += 1 }
         guard j < expected.count, abs(sample - expected[j]) <= 36 else { continue }
         truePositive += 1
-        matchedByType[beatType[expected[j]]!, default: 0] += 1
+        let label = beatType[expected[j]]!
+        matchedByType[label, default: 0] += 1
+        if let context = ECGBeatTimingContext.measure(beats: beats, at: i) {
+            couplingByType[label, default: []].append(context.couplingRatio)
+            followingByType[label, default: []].append(context.followingRatio)
+        }
         timingErrors.append(Double(abs(sample - expected[j])) * 1000 / Double(rate))
         if let previous, previous.predictionIndex + 1 == i, previous.labelIndex + 1 == j {
             let error = (sample - found[i - 1]) - (expected[j] - expected[j - 1])
@@ -73,6 +80,9 @@ print(String(format: "sensitivity=%.4f PPV=%.4f timing_MAE_ms=%.2f RR_pairs=%d R
 precondition(truePositive >= 2150 && predicted.count - truePositive <= 100)
 
 for (kind, label) in [(1, "N"), (8, "A"), (5, "V")] {
+    let coupling = couplingByType[kind] ?? [], following = followingByType[kind] ?? []
+    print(String(format: "%@ contexts=%d mean_coupling_ratio=%.3f mean_following_ratio=%.3f",
+                 label, coupling.count, mean(coupling), mean(following)))
     print("reference_label=\(label) matched=\(matchedByType[kind, default: 0])/\(beatType.values.filter { $0 == kind }.count)")
 }
 precondition(rrErrors.count >= 2100 && mean(rrErrors) <= 5 && mean(timingErrors) <= 5)
