@@ -113,9 +113,8 @@ final class HealthKitRepository {
         }
     }
 
-    func sleepIntervals() async throws -> [SleepInterval] {
-        let now = Date()
-        let since = now.addingTimeInterval(-36 * 3600)
+    func sleepIntervals(from startDate: Date? = nil, through now: Date = Date()) async throws -> [SleepInterval] {
+        let since = startDate ?? now.addingTimeInterval(-36 * 3600)
         let predicate = HKQuery.predicateForSamples(withStart: since, end: now)
         let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis)!
         let samples = try await sampleQuery(type: sleepType, predicate: predicate, limit: HKObjectQueryNoLimit)

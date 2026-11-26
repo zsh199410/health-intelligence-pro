@@ -67,6 +67,9 @@ struct SleepView: View {
                     } else {
                         sleepStatus
                     }
+                    NavigationLink("近七日睡眠时间规律") {
+                        SleepTimingVariationView()
+                    }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(18)
             }
             .background(HealthTheme.canvas.ignoresSafeArea())
