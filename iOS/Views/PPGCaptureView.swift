@@ -4,6 +4,7 @@ import Charts
 struct PPGCaptureView: View {
     @Environment(\.scenePhase) private var phase
     @StateObject private var capture = PPGCameraCapture()
+    @State private var showingGuide = false
 
     var body: some View {
         Form {
@@ -11,12 +12,16 @@ struct PPGCaptureView: View {
                 Text("将指腹轻轻覆盖后置广角镜头和补光灯，保持静止。开始后将开启低亮度补光，约 12 秒自动结束。如有不适，请立即停止。")
                 Text("画面仅在本机提取亮度变化，随后释放。结果是实验性光学估算；手指移动、环境光和相机设置会影响读数。")
                     .font(.footnote)
+                PPGPhoneBackDiagramView(placement: .correct, showLabels: true)
+                    .frame(maxWidth: .infinity)
+                Button("查看完整放置指南") { showingGuide = true }
                 if capture.busy {
                     Button("停止采集", role: .cancel) { capture.stop() }
                 } else {
                     Button("开始采集") { capture.start() }
                 }
                 Text(capture.message).accessibilityLabel("采集状态，\(capture.message)")
+                Button("放置示意图") { showingGuide = true }
             }
             if let first = capture.waveform.first {
                 Section("指尖光学波形") {
@@ -46,6 +51,17 @@ struct PPGCaptureView: View {
                 .id(capture.acquisitionWindow)
         }
         .navigationTitle("指尖脉搏信号")
+        .sheet(isPresented: $showingGuide) {
+            NavigationStack {
+                PPGCaptureGuideView()
+                    .navigationTitle("正确放置手指")
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("完成") { showingGuide = false }
+                        }
+                    }
+            }
+        }
         .onDisappear { capture.stop() }
         .onChange(of: phase) { _, phase in
             if phase == .background { capture.stop() }

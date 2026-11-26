@@ -51,8 +51,18 @@ final class ScreenshotsTests: XCTestCase {
         XCTAssertTrue(ppg.isHittable)
         ppg.tap()
         XCTAssertTrue(app.navigationBars["指尖脉搏信号"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["开始采集"].exists)
-        XCTAssertTrue(app.staticTexts["采集状态，等待开始采集"].exists)
+        XCTAssertTrue(app.buttons["开始采集"].waitForExistence(timeout: 10))
+        // The placement diagram (320x400) pushes the status line below the
+        // fold in this Form; off-screen Form rows are not in the
+        // accessibility tree, so scroll the status line into view first.
+        for _ in 0..<5 {
+            if app.staticTexts["采集状态，等待开始采集"].exists { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(app.staticTexts["采集状态，等待开始采集"].waitForExistence(timeout: 10))
+        // Scroll back to the top so the ppg-idle shot still shows the
+        // diagram and the guide section, not only the scrolled tail.
+        app.swipeDown()
         capture("ppg-idle", prefix: "light")
     }
 
