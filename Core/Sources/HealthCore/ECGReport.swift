@@ -13,6 +13,9 @@ extension ECGSummary {
             "记录来源　\(source ?? "未提供")",
             "系统分类　\(classification)"
         ]
+        if let duration {
+            lines.append(String(format: "记录时长　%.1f 秒", duration))
+        }
         if let rate = averageHeartRate, rate.isFinite {
             lines.append(String(format: "记录平均心率　%.1f 次/分", rate))
         }

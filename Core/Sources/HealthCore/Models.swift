@@ -67,13 +67,15 @@ public struct ECGSummary: Codable, Identifiable, Sendable {
     public let classification: String
     public let averageHeartRate: Double?
     public let source: String?
+    public let duration: TimeInterval?
 
-    public init(id: UUID, recordedAt: Date, classification: String, averageHeartRate: Double?, source: String? = nil) {
+    public init(id: UUID, recordedAt: Date, classification: String, averageHeartRate: Double?, source: String? = nil, duration: TimeInterval? = nil) {
         self.id = id
         self.recordedAt = recordedAt
         self.classification = classification
         self.averageHeartRate = averageHeartRate
         self.source = source
+        self.duration = duration.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
     }
 }
 

@@ -149,7 +149,8 @@ final class HealthKitRepository {
             return ECGSummary(id: ecg.uuid, recordedAt: ecg.startDate,
                               classification: ecgDescription(ecg.classification),
                               averageHeartRate: ecg.averageHeartRate?.doubleValue(for: HealthCatalog.pulseUnit),
-                              source: ecg.sourceRevision.source.name)
+                              source: ecg.sourceRevision.source.name,
+                              duration: ecg.endDate.timeIntervalSince(ecg.startDate))
         }
     }
 

@@ -22,55 +22,27 @@ struct HeartView: View {
                                 .font(.subheadline).foregroundStyle(HealthTheme.muted)
                         }
                     }
+                    NavigationLink {
+                        ECGCenterView()
+                    } label: {
+                        HealthCard {
+                            HStack {
+                                Label("心电中心", systemImage: "waveform.path.ecg")
+                                    .font(.headline)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(HealthTheme.muted)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("ecg-center-entry")
                     SectionHeadline(title: "心血管指标", subtitle: "可点击任意指标查看来源与历史")
                     LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(metricIDs, id: \.self) { id in
                             if let metric = HealthCatalog.byID[id] {
                                 NavigationLink { MetricDetailView(metric: metric) } label: {
                                     MetricTile(metric: metric, reading: health.readings[id])
-                                }.buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    SectionHeadline(title: "心电图 ECG", subtitle: "最近 90 个本地自然日 · 苹果系统分类")
-                    if health.ecgReadFailed {
-                        HealthCard { EmptyHealthState(title: "读取 ECG 失败", detail: "请解锁设备并下拉刷新。") }
-                    } else if health.ecgs.isEmpty {
-                        HealthCard {
-                            EmptyHealthState(title: "暂无 ECG 历史记录",
-                                             detail: "请使用手表系统 ECG App 进行测量。功能可能受设备、年龄、地区与授权限制。")
-                        }
-                    } else {
-                        let counts = Dictionary(grouping: health.ecgs, by: \.classification).mapValues { $0.count }
-                        HealthCard {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("记录分类 · 共 \(health.ecgs.count) 条").font(.headline)
-                                ForEach(counts.keys.sorted(), id: \.self) { label in
-                                    LabeledContent(label, value: "\(counts[label, default: 0]) 条")
-                                }
-                                Text("每条已保存心电图计一次。统计范围仅覆盖测量时段。").font(.footnote)
-                            }
-                        }
-                        LazyVStack {
-                            ForEach(health.ecgs) { ecg in
-                                NavigationLink { ECGDetailView(ecg: ecg) } label: {
-                                    HealthCard {
-                                        HStack(spacing: 12) {
-                                            Image(systemName: "waveform.path.ecg")
-                                                .foregroundStyle(HealthTheme.coral).font(.title3)
-                                            VStack(alignment: .leading, spacing: 5) {
-                                                Text(ecg.classification).font(.headline).foregroundStyle(HealthTheme.ink)
-                                                Text(ecg.recordedAt.formatted())
-                                                    .font(.caption).foregroundStyle(HealthTheme.muted)
-                                                if let rate = ecg.averageHeartRate {
-                                                    Text("平均心率 \(rate, format: .number.precision(.fractionLength(0))) 次/分")
-                                                        .font(.caption).foregroundStyle(HealthTheme.muted)
-                                                }
-                                            }
-                                            Spacer()
-                                            Image(systemName: "chevron.right").foregroundStyle(HealthTheme.muted)
-                                        }
-                                    }
                                 }.buttonStyle(.plain)
                             }
                         }
@@ -121,7 +93,11 @@ struct ECGDetailView: View {
                         HealthPill(title: "只读记录", icon: "lock.fill", tint: HealthTheme.coral)
                         LabeledContent("记录来源", value: ecg.source ?? "未提供")
                         Text(ecg.classification).font(.title2.bold()).foregroundStyle(HealthTheme.ink)
-                        Text(ecg.recordedAt.formatted()).font(.caption).foregroundStyle(HealthTheme.muted)
+                        Text(ecg.recordedAt.formatted(.dateTime.year().month().day().hour().minute().second().locale(Locale(identifier: "zh_CN"))))
+                            .font(.caption).foregroundStyle(HealthTheme.muted)
+                        if let seconds = ecg.duration {
+                            LabeledContent("记录时长", value: "\(seconds.formatted(.number.precision(.fractionLength(1)))) 秒")
+                        }
                     }
                 }
                 HealthCard {

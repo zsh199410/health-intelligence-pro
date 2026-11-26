@@ -10,13 +10,19 @@ final class ECGCenterTests: XCTestCase {
         XCTAssertTrue(trace.segments(in: 4...5).isEmpty)
     }
 
+    func testOlderRecordHasUnknownDuration() throws {
+        let record = ECGSummary(id: UUID(), recordedAt: Date(timeIntervalSince1970: 100), classification: "未分类", averageHeartRate: nil)
+        let data = try JSONEncoder().encode(record)
+        XCTAssertNil(try JSONDecoder().decode(ECGSummary.self, from: data).duration)
+    }
+
     func testReportUsesRecordTimeZoneClassificationAndActualData() throws {
         let raw = [ECGVoltagePoint(seconds: 2, millivolts: 0), ECGVoltagePoint(seconds: 2.01, millivolts: 0.05)]
         let trace = try ECGWaveform(samples: raw, samplingFrequency: 100)
         let summary = ECGSummary(id: UUID(), recordedAt: Date(timeIntervalSince1970: 0),
-                                 classification: "记录质量不足（系统分类）", averageHeartRate: nil, source: "设备 A")
+                                 classification: "记录质量不足（系统分类）", averageHeartRate: nil, source: "设备 A", duration: 30)
         let result = summary.report(trace: trace, timeZone: try XCTUnwrap(TimeZone(identifier: "Asia/Shanghai")))
-        for value in ["设备 A", "08:00:00", "Asia/Shanghai", summary.classification, "100.00 Hz", "0.010 秒"] {
+        for value in ["设备 A", "08:00:00", "Asia/Shanghai", summary.classification, "记录时长　30.0 秒", "100.00 Hz", "0.010 秒"] {
             XCTAssertTrue(result.contains(value))
         }
         XCTAssertFalse(result.contains("平均心率"))
