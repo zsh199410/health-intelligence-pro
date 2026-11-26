@@ -67,6 +67,8 @@ struct SleepView: View {
                     } else {
                         sleepStatus
                     }
+                    sleepHistorySection
+                    sleepRegularitySection
                     NavigationLink("近七日睡眠时间规律") {
                         SleepTimingVariationView()
                     }
@@ -74,7 +76,15 @@ struct SleepView: View {
             }
             .background(HealthTheme.canvas.ignoresSafeArea())
             .navigationTitle("睡眠健康")
-            .refreshable { await health.refresh() }
+            .task {
+                await health.loadSleepHistory()
+                await health.loadSleepRegularity()
+            }
+            .refreshable {
+                await health.refresh()
+                await health.loadSleepHistory()
+                await health.loadSleepRegularity()
+            }
         }
     }
 
@@ -91,6 +101,65 @@ struct SleepView: View {
                 .buttonStyle(.borderedProminent)
         } else {
             EmptyHealthState(title: "暂无可读取的睡眠记录", detail: "最近 36 小时内未读取到睡眠分期。可在 Apple 健康中检查睡眠记录与共享权限。", symbol: "moon.zzz.fill")
+        }
+    }
+
+    @ViewBuilder private var sleepHistorySection: some View {
+        SectionHeadline(title: "近 7 日睡眠时长", subtitle: "按醒来日期归组，缺失不补算")
+        HealthCard {
+            VStack(alignment: .leading, spacing: 14) {
+                if health.sleepHistoryFailed {
+                    EmptyHealthState(title: "读取 7 日睡眠失败", detail: "请解锁设备后下拉刷新。", symbol: "exclamationmark.triangle")
+                } else if health.sleepHistory.allSatisfy({ !$0.hasRecord }) {
+                    EmptyHealthState(title: "暂无 7 日睡眠记录", detail: "最近 7 天内未读取到睡眠分期。可在 Apple 健康中检查睡眠记录与共享权限。", symbol: "moon.zzz.fill")
+                        .frame(minHeight: 160)
+                } else {
+                    Chart(health.sleepHistory) { day in
+                        BarMark(x: .value("日期", day.date),
+                                y: .value("睡眠分钟", day.asleepMinutes))
+                            .foregroundStyle(day.hasRecord ? HealthTheme.sleep : HealthTheme.muted.opacity(0.25))
+                    }
+                    .frame(height: 180)
+                    .chartXAxis {
+                        AxisMarks(values: .automatic(desiredCount: 7)) {
+                            AxisValueLabel(format: .dateTime.weekday(.abbreviated).locale(Locale(identifier: "zh_CN")))
+                        }
+                    }
+                    .accessibilityLabel("近 7 日每日睡眠时长")
+                    ForEach(health.sleepHistory) { day in
+                        LabeledContent(ChineseDateTime.day(day.date),
+                                       value: day.hasRecord ? "\(day.asleepMinutes / 60)小时\(day.asleepMinutes % 60)分" : "无记录")
+                    }
+                }
+                Text("无记录的日子不代表当晚没睡，可能是未戴表、未授权或未记录；不跨缺失天数连线或补算。")
+                    .font(.footnote).foregroundStyle(HealthTheme.muted)
+            }
+        }
+    }
+
+    @ViewBuilder private var sleepRegularitySection: some View {
+        SectionHeadline(title: "睡眠时间规律", subtitle: "近七个完整日 · 按醒来日期归组")
+        HealthCard {
+            VStack(alignment: .leading, spacing: 9) {
+                if health.sleepRegularityFailed {
+                    Text("读取睡眠规律失败，请解锁设备后下拉刷新。")
+                        .font(.subheadline).foregroundStyle(HealthTheme.muted)
+                } else if let result = health.sleepRegularity {
+                    LabeledContent("有记录天数", value: "\(result.observedDays) / 7")
+                    LabeledContent("可比较的相邻日", value: "\(result.adjacentPairs) 对")
+                    if let onset = result.medianOnsetChange, let wake = result.medianWakeChange {
+                        LabeledContent("入睡时刻变动中位数", value: "\(Int(onset.rounded())) 分钟")
+                        LabeledContent("醒来时刻变动中位数", value: "\(Int(wake.rounded())) 分钟")
+                    } else {
+                        Text("至少需要两个相邻日期的睡眠记录。")
+                            .font(.subheadline).foregroundStyle(HealthTheme.muted)
+                    }
+                    Text("以分期记录的首末睡眠样本估计入睡与醒来时刻；分段作息或记录缺失会影响结果。")
+                        .font(.footnote).foregroundStyle(HealthTheme.muted)
+                } else {
+                    ProgressView("读取睡眠规律")
+                }
+            }
         }
     }
 }
