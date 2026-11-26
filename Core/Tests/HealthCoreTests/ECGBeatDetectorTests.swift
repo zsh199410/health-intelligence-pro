@@ -25,6 +25,16 @@ final class ECGBeatDetectorTests: XCTestCase {
         }
     }
 
+    func testRejectsFrozenSectionSurroundedByRecognizableBeats() throws {
+        let clipped = signal(hz: 250, polarity: 1).map { point in
+            (3...5).contains(point.seconds) ? ECGVoltagePoint(seconds: point.seconds, millivolts: 0.3) : point
+        }
+        let trace = try ECGWaveform(samples: clipped, samplingFrequency: 250)
+        XCTAssertThrowsError(try ECGBeatDetector.detect(in: trace).get()) {
+            XCTAssertEqual($0 as? ECGBeatDetector.Rejection, .weakOrNoisySignal)
+        }
+    }
+
     func testRefusesMissingFramesAndFlatRecording() throws {
         var input = signal(hz: 250, polarity: 1)
         input.removeSubrange(400..<420)

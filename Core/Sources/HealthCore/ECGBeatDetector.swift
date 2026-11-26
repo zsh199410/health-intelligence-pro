@@ -24,6 +24,16 @@ public enum ECGBeatDetector {
             return .failure(.interruptedSampling)
         }
 
+        // A digitally frozen section can otherwise be misreported as one long RR.
+        var lastChange = first.seconds
+        for (previous, sample) in zip(samples, samples.dropFirst()) {
+            if sample.millivolts != previous.millivolts {
+                lastChange = sample.seconds
+            } else if sample.seconds - lastChange >= 1 {
+                return .failure(.weakOrNoisySignal)
+            }
+        }
+
         // Difference across 16 ms suppresses slow drift. Smooth its absolute
         // magnitude over 64 ms to obtain a polarity-independent QRS activity envelope.
         let lag = max(1, Int((0.016 * hz).rounded()))

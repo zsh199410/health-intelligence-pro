@@ -6,6 +6,7 @@ let signal = [UInt8](try Data(contentsOf: URL(fileURLWithPath: CommandLine.argum
 let annotations = [UInt8](try Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[2])))
 precondition(signal.count == 650_000 * 3)
 var reference = [Int]()
+var beatType = [Int: Int]()
 var cursor = 0
 var position = 0
 while cursor + 1 < annotations.count {
@@ -18,7 +19,7 @@ while cursor + 1 < annotations.count {
     case 61: break // SUB metadata
     case 1, 5, 8, 28:
         position += value
-        if kind != 28 { reference.append(position) } // N, V, A beats; exclude rhythm marker
+        if kind != 28 { reference.append(position); beatType[position] = kind } // N, V, A beats; exclude rhythm marker
     default: fatalError("Unexpected annotation in pinned record")
     }
 }
@@ -29,6 +30,7 @@ var rejected = 0, windows = 0
 var rrErrors = [Double]()
 var timingErrors = [Double]()
 var truePositive = 0
+var matchedByType = [Int: Int]()
 for start in stride(from: 0, to: signal.count / 3, by: window) {
     windows += 1
     let stop = min(start + window, signal.count / 3)
@@ -51,6 +53,7 @@ for start in stride(from: 0, to: signal.count / 3, by: window) {
         while j < expected.count && expected[j] < sample - 36 { j += 1 }
         guard j < expected.count, abs(sample - expected[j]) <= 36 else { continue }
         truePositive += 1
+        matchedByType[beatType[expected[j]]!, default: 0] += 1
         timingErrors.append(Double(abs(sample - expected[j])) * 1000 / Double(rate))
         if let previous, previous.predictionIndex + 1 == i, previous.labelIndex + 1 == j {
             let error = (sample - found[i - 1]) - (expected[j] - expected[j - 1])
@@ -68,3 +71,8 @@ print(String(format: "sensitivity=%.4f PPV=%.4f timing_MAE_ms=%.2f RR_pairs=%d R
              mean(timingErrors), rrErrors.count, mean(rrErrors)))
 // Engineering regression floor on this one record, not a clinical acceptance threshold.
 precondition(truePositive >= 2150 && predicted.count - truePositive <= 100)
+
+for (kind, label) in [(1, "N"), (8, "A"), (5, "V")] {
+    print("reference_label=\(label) matched=\(matchedByType[kind, default: 0])/\(beatType.values.filter { $0 == kind }.count)")
+}
+precondition(rrErrors.count >= 2100 && mean(rrErrors) <= 5 && mean(timingErrors) <= 5)
