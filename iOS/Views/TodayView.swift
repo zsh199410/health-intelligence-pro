@@ -179,6 +179,14 @@ struct TodayView: View {
                         ModuleCardContent(module: module)
                     }
                     .buttonStyle(.plain)
+                } else if module.id == .recovery {
+                    NavigationLink {
+                        AutonomicRecoveryView()
+                    } label: {
+                        ModuleCardContent(module: module)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("autonomic-recovery-entry")
                 } else if module.id == .stress {
                     NavigationLink {
                         StressView()
