@@ -113,6 +113,70 @@ final class HealthKitRepository {
         }
     }
 
+    /// Raw samples of a metric over the last `hours` hours, oldest first.
+    /// Used by the stress page, which needs within-day (hourly) samples;
+    /// `trend` aggregates per day and cannot serve that. Values use the
+    /// metric unit and multiplier, non-finite values are dropped. Only
+    /// the newest `limit` samples are read; the result is re-sorted
+    /// ascending because `sampleQuery` returns newest first.
+    func samples(_ metric: HealthMetric, hours: Int, limit: Int = 500) async throws -> [TrendPoint] {
+        guard let start = Calendar.current.date(byAdding: .hour, value: -max(1, hours), to: Date()) else { return [] }
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: Date())
+        let raw = try await sampleQuery(type: metric.quantityType, predicate: predicate, limit: limit)
+        var result: [TrendPoint] = []
+        for case let sample as HKQuantitySample in raw {
+            let value = sample.quantity.doubleValue(for: metric.unit) * metric.multiplier
+            guard value.isFinite else { continue }
+            result.append(TrendPoint(recordedAt: sample.endDate, value: value))
+        }
+        return result.sorted { $0.recordedAt < $1.recordedAt }
+    }
+
+
+    /// Workouts in the window as RatedWorkout with exertion nil: session RPE
+    /// is a real user rating (0-10) and is applied by the caller from the
+    /// locally stored inputs, never guessed from heart rate or energy.
+    /// Active minutes come from start/end minus pause spans in the workout
+    /// events, so a paused session does not count paused time as training.
+    /// Without events the full elapsed time counts.
+    func workouts(from startDate: Date, through now: Date) async throws -> [RatedWorkout] {
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: now)
+        let raw = try await sampleQuery(type: HKObjectType.workoutType(), predicate: predicate, limit: HKObjectQueryNoLimit)
+        return raw.compactMap { sample in
+            guard let workout = sample as? HKWorkout, workout.endDate > workout.startDate else { return nil }
+            var paused: TimeInterval = 0
+            var pauseStart: Date?
+            for event in workout.workoutEvents ?? [] {
+                if event.type == .pause {
+                    if pauseStart == nil { pauseStart = event.date }
+                } else if event.type == .resume {
+                    if let start = pauseStart {
+                        paused += event.date.timeIntervalSince(start)
+                        pauseStart = nil
+                    }
+                }
+            }
+            if let start = pauseStart { paused += workout.endDate.timeIntervalSince(start) }
+            let active = max(0, workout.endDate.timeIntervalSince(workout.startDate) - paused) / 60
+            guard active > 0, active.isFinite else { return nil }
+            return RatedWorkout(id: workout.uuid, start: workout.startDate, end: workout.endDate,
+                                activeMinutes: active, exertion: nil)
+        }.sorted { $0.start < $1.start }
+    }
+
+
+    /// Workout activity types by workout UUID, for display names. Runs the
+    /// same query as workouts(); callers that need both should call both.
+    func workoutActivityTypes(from startDate: Date, through now: Date) async throws -> [UUID: HKWorkoutActivityType] {
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: now)
+        let raw = try await sampleQuery(type: HKObjectType.workoutType(), predicate: predicate, limit: HKObjectQueryNoLimit)
+        var result: [UUID: HKWorkoutActivityType] = [:]
+        for case let workout as HKWorkout in raw {
+            result[workout.uuid] = workout.workoutActivityType
+        }
+        return result
+    }
+
     func sleepIntervals(from startDate: Date? = nil, through now: Date = Date()) async throws -> [SleepInterval] {
         let since = startDate ?? now.addingTimeInterval(-36 * 3600)
         let predicate = HKQuery.predicateForSamples(withStart: since, end: now)

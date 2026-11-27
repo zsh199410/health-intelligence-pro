@@ -6,6 +6,9 @@ struct SleepView: View {
     @EnvironmentObject private var health: HealthViewModel
     @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric(relativeTo: .body) private var plotHeight = 148.0
+    @State private var sleepTargetMinutes: Double = 480
+    @State private var hasSleepTarget = false
+    private let dayStyle = Date.FormatStyle.dateTime.month().day().weekday(.abbreviated).locale(Locale(identifier: "zh_CN"))
     private let stages: [SleepStage] = [.awake, .rem, .core, .deep, .unspecified]
     private let dateStyle = Date.FormatStyle.dateTime.month().day().hour().minute().locale(Locale(identifier: "zh_CN"))
 
@@ -69,6 +72,7 @@ struct SleepView: View {
                     }
                     sleepHistorySection
                     sleepRegularitySection
+                    sleepGoalSection
                     NavigationLink("近七日睡眠时间规律") {
                         SleepTimingVariationView()
                     }
@@ -79,13 +83,82 @@ struct SleepView: View {
             .task {
                 await health.loadSleepHistory()
                 await health.loadSleepRegularity()
+                hasSleepTarget = health.recoveryInputs.sleepTargetMinutes != nil
+                sleepTargetMinutes = Double(health.recoveryInputs.sleepTargetMinutes ?? 480)
+                await health.loadRecovery()
             }
             .refreshable {
                 await health.refresh()
                 await health.loadSleepHistory()
                 await health.loadSleepRegularity()
+                await health.loadRecovery()
             }
         }
+    }
+
+    @ViewBuilder private var sleepGoalSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionHeadline(title: "睡眠目标与短缺", subtitle: "目标是你自己定的；短缺只按已同步记录算")
+            HealthCard {
+                VStack(alignment: .leading, spacing: 9) {
+                    if hasSleepTarget {
+                        Stepper("每晚睡眠目标 \(hoursText(sleepTargetMinutes))", onIncrement: { adjustTarget(by: 30) }, onDecrement: { adjustTarget(by: -30) })
+                    } else {
+                        Text("还没有设置每晚睡眠目标，设置后这里会显示每天的短缺。")
+                            .font(.subheadline).foregroundStyle(HealthTheme.muted)
+                        Button("设置目标：8 小时") {
+                            hasSleepTarget = true
+                            sleepTargetMinutes = 480
+                            health.recoveryInputs.setSleepTarget(minutes: 480)
+                            Task { await health.loadRecovery() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    if let report = health.recoveryReport {
+                        ForEach(report.days.reversed(), id: \.date) { day in
+                            HStack {
+                                Text(day.date.formatted(dayStyle))
+                                Spacer()
+                                Text(dayText(day))
+                            }
+                            .font(.subheadline)
+                            if day.date != report.days.first?.date { Divider() }
+                        }
+                        if let total = report.totalShortfallMinutes {
+                            Text("近 7 天累计短缺 \(hoursText(Double(total)))")
+                                .font(.subheadline.weight(.semibold))
+                        } else {
+                            Text("有 \(report.days.filter { $0.sleepMinutes == nil }.count) 天无睡眠记录，无法汇总累计短缺。")
+                                .font(.subheadline).foregroundStyle(HealthTheme.muted)
+                        }
+                    }
+                    Text("短缺 = 目标 − 实际睡眠；睡够目标不记负数；无记录的日子不算。")
+                        .font(.footnote).foregroundStyle(HealthTheme.muted)
+                }
+            }
+        }
+    }
+
+    private func adjustTarget(by delta: Double) {
+        let next = min(720, max(240, sleepTargetMinutes + delta))
+        sleepTargetMinutes = next
+        health.recoveryInputs.setSleepTarget(minutes: next)
+        Task { await health.loadRecovery() }
+    }
+
+    private func hoursText(_ minutes: Double) -> String {
+        let total = Int(minutes)
+        if total % 60 == 0 { return "\(total / 60) 小时" }
+        return "\(total / 60) 小时 \(total % 60) 分钟"
+    }
+
+    private func dayText(_ day: RecoveryLoadReport.Day) -> String {
+        guard let minutes = day.sleepMinutes else { return "无记录" }
+        let slept = hoursText(Double(minutes))
+        if let shortfall = day.shortfallMinutes, shortfall > 0 {
+            return "睡了 \(slept)，短缺 \(shortfall) 分钟"
+        }
+        return "睡了 \(slept)，已达标"
     }
 
     @ViewBuilder private var sleepStatus: some View {

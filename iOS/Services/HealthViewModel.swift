@@ -35,6 +35,21 @@ final class HealthViewModel: ObservableObject {
     @Published var lastRefreshedAt: Date?
 
     private let repository = HealthKitRepository()
+    /// User-entered recovery inputs (sleep target, energy/fatigue ratings,
+    /// workout RPE). Owned here so every recovery page shares one store.
+    let recoveryInputs = RecoveryInputsStore()
+    /// Today's autonomic snapshot (resting SDNN + resting heart rate
+    /// against the 30-day personal baseline), nil until loaded.
+    @Published private(set) var autonomicDay: AutonomicRecoveryDay?
+    @Published private(set) var autonomicFailed = false
+    /// Week load report and recovery journal, nil until loaded.
+    @Published private(set) var recoveryReport: RecoveryLoadReport?
+    @Published private(set) var recoveryJournal: RecoveryJournal?
+    @Published private(set) var recoveryWorkouts: [RatedWorkout] = []
+    @Published private(set) var recoveryWorkoutTypeNames: [UUID: String] = [:]
+    @Published private(set) var recoveryFollowUps: [PostWorkoutFollowUp] = []
+    @Published private(set) var recoveryFailed = false
+    @Published private(set) var recoveryLoadedAt: Date?
     var isHealthAvailable: Bool { repository.isAvailable }
     var insights: [HealthInsight] { InsightEngine.insights(readings: readings, sleep: sleep) }
 
@@ -155,6 +170,32 @@ final class HealthViewModel: ObservableObject {
         } catch {
             sleepRegularity = nil
             sleepRegularityFailed = true
+        }
+    }
+
+    /// Loads the Build 27 recovery models (today's autonomic snapshot,
+    /// week load report, recovery journal, rated workouts). Called by the
+    /// recovery pages on appear; refresh() keeps its existing scope.
+    func loadRecovery() async {
+        let loader = RecoveryDataLoader(repository: repository, inputs: recoveryInputs)
+        do {
+            let result = try await loader.loadRecovery()
+            autonomicDay = result.autonomicToday
+            recoveryReport = result.report
+            recoveryJournal = result.journal
+            recoveryWorkouts = result.workouts
+            recoveryWorkoutTypeNames = result.workoutTypeNames
+            recoveryFollowUps = result.followUps
+            recoveryFailed = false
+            recoveryLoadedAt = .now
+        } catch {
+            autonomicDay = nil
+            recoveryReport = nil
+            recoveryJournal = nil
+            recoveryWorkouts = []
+            recoveryWorkoutTypeNames = [:]
+            recoveryFollowUps = []
+            recoveryFailed = true
         }
     }
 

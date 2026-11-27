@@ -159,7 +159,109 @@ final class ScreenshotsTests: XCTestCase {
         capture("sleep-history", prefix: "light")
     }
 
-    private func launch(light: Bool, largeText: Bool) {
+    func testBuild27StressPageOpens() {
+        // The Today stress module is not rendered in the simulator
+        // (no HealthKit data, so the page shows the permission card),
+        // so open the page through the screenshot launch argument
+        // instead of tapping the module card.
+        launch(light: true, largeText: false, extraArguments: ["-openStressPageForScreenshots"])
+        // #281: both stress tests timed out on the skip button (10s).
+        // The page hook fires as soon as Today appears, so if onboarding
+        // was already complete the app may open straight onto the page
+        // with no skip button at all. Tap it only when it shows up.
+        let skip = app.buttons["跳过"]
+        if skip.waitForExistence(timeout: 20) {
+            skip.tap()
+        }
+        XCTAssertTrue(app.navigationBars["压力"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["连接 Apple 健康"].waitForExistence(timeout: 10))
+        capture("stress", prefix: "light")
+    }
+
+    func testBuild27RecoveryPageOpens() {
+        launch(light: true, largeText: false)
+        let skip = app.buttons["跳过"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 10))
+        skip.tap()
+
+        tapTab("心脏")
+        let entry = app.buttons["autonomic-recovery-entry"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 10))
+        entry.tap()
+        XCTAssertTrue(app.navigationBars["恢复基线"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["心率变异性（HRV）与静息心率相对个人基线的位置"].waitForExistence(timeout: 10))
+        capture("recovery-baseline", prefix: "light")
+    }
+
+    func testBuild27EnergyPageOpens() {
+        // The Today energy module is not rendered in the simulator
+        // (no HealthKit data), so open the page through the screenshot
+        // launch argument instead of tapping the module card.
+        launch(light: true, largeText: false, extraArguments: ["-openEnergyPageForScreenshots"])
+        let skip = app.buttons["跳过"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 10))
+        skip.tap()
+        XCTAssertTrue(app.navigationBars["身体能量"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["精力与疲劳，是你自己的记录"].waitForExistence(timeout: 10))
+        capture("energy", prefix: "light")
+    }
+
+    func testBuild27SleepGoalOpens() {
+        launch(light: true, largeText: false)
+        let skip = app.buttons["跳过"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 10))
+        skip.tap()
+
+        tapTab("睡眠")
+        XCTAssertTrue(app.staticTexts["睡眠目标与短缺"].waitForExistence(timeout: 10))
+        capture("sleep-goal", prefix: "light")
+    }
+
+    func testBuild27TrainingLoadPageOpens() {
+        // The Today load module is not rendered in the simulator
+        // (no HealthKit data), so open the page through the screenshot
+        // launch argument instead of tapping the module card.
+        launch(light: true, largeText: false, extraArguments: ["-openTrainingLoadPageForScreenshots"])
+        let skip = app.buttons["跳过"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 10))
+        skip.tap()
+        XCTAssertTrue(app.navigationBars["运动负荷"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["训练负荷来自真实训练与你的主观用力评分"].waitForExistence(timeout: 10))
+        capture("training-load", prefix: "light")
+    }
+
+    func testBuild27DarkStressPageOpens() {
+        launch(light: false, largeText: false, extraArguments: ["-openStressPageForScreenshots"])
+        // Same skip-button resilience as testBuild27StressPageOpens (#281).
+        let skip = app.buttons["跳过"]
+        if skip.waitForExistence(timeout: 20) {
+            skip.tap()
+        }
+        XCTAssertTrue(app.navigationBars["压力"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["连接 Apple 健康"].waitForExistence(timeout: 10))
+        capture("stress", prefix: "dark")
+    }
+
+    func testBuild27LargeTextRecoveryPageOpens() {
+        launch(light: true, largeText: true)
+        let skip = app.buttons["跳过"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 10))
+        skip.tap()
+
+        tapTab("心脏")
+        let entry = app.buttons["autonomic-recovery-entry"]
+        for _ in 0..<5 {
+            if entry.exists && entry.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(entry.isHittable)
+        entry.tap()
+        XCTAssertTrue(app.navigationBars["恢复基线"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["心率变异性（HRV）与静息心率相对个人基线的位置"].waitForExistence(timeout: 10))
+        capture("recovery-baseline", prefix: "large-text")
+    }
+
+    private func launch(light: Bool, largeText: Bool, extraArguments: [String] = []) {
         app = XCUIApplication()
         // Force the app process into light/dark via launch argument.
         // XCUIDevice.shared.appearance is an async simulator-level change
@@ -169,6 +271,7 @@ final class ScreenshotsTests: XCTestCase {
         app.launchArguments += ["-AppleInterfaceStyle", light ? "Light" : "Dark"]
         // Reset onboarding so every mode starts at the welcome screen.
         app.launchArguments += ["-resetOnboardingForScreenshots"]
+        app.launchArguments += extraArguments
         if largeText {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName",
                                     "UICTContentSizeCategoryAccessibilityExtraLarge"]

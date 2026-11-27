@@ -8,6 +8,12 @@ struct TodayView: View {
     @State private var showSettings = false
     /// Set by RootView so the Sleep module card can switch to the Sleep tab.
     var onOpenSleepTab: () -> Void = {}
+    @State private var showStressPageForScreenshots = false
+    @State private var showEnergyPageForScreenshots = false
+    @State private var showTrainingLoadPageForScreenshots = false
+    @State private var trainingLoadPageHookUsed = false
+    @State private var energyPageHookUsed = false
+    @State private var stressPageHookUsed = false
 
     private let primary = ["restingHeartRate", "hrv", "oxygenSaturation", "respiratoryRate"]
 
@@ -51,7 +57,25 @@ struct TodayView: View {
                     .preferredColorScheme(resolvedColorScheme)
             }
             .refreshable { await health.refresh() }
+            .navigationDestination(isPresented: $showStressPageForScreenshots) { StressView() }
+            .navigationDestination(isPresented: $showEnergyPageForScreenshots) { EnergyView() }
+            .navigationDestination(isPresented: $showTrainingLoadPageForScreenshots) { TrainingLoadView() }
             .task {
+                // Screenshot-only hook: the Today stress module is not
+                // rendered in the simulator (no HealthKit data), so the
+                // stress screenshot test opens the page directly.
+                if !stressPageHookUsed, ProcessInfo.processInfo.arguments.contains("-openStressPageForScreenshots") {
+                    stressPageHookUsed = true
+                    showStressPageForScreenshots = true
+                }
+                if !energyPageHookUsed, ProcessInfo.processInfo.arguments.contains("-openEnergyPageForScreenshots") {
+                    energyPageHookUsed = true
+                    showEnergyPageForScreenshots = true
+                }
+                if !trainingLoadPageHookUsed, ProcessInfo.processInfo.arguments.contains("-openTrainingLoadPageForScreenshots") {
+                    trainingLoadPageHookUsed = true
+                    showTrainingLoadPageForScreenshots = true
+                }
                 if health.lastRefreshedAt == nil && UserDefaults.standard.bool(forKey: "onboardingComplete") {
                     await health.refresh()
                 }
@@ -169,6 +193,38 @@ struct TodayView: View {
                         ModuleCardContent(module: module)
                     }
                     .buttonStyle(.plain)
+                } else if module.id == .recovery {
+                    NavigationLink {
+                        AutonomicRecoveryView()
+                    } label: {
+                        ModuleCardContent(module: module)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("autonomic-recovery-entry")
+                } else if module.id == .energy {
+                    NavigationLink {
+                        EnergyView()
+                    } label: {
+                        ModuleCardContent(module: module)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("energy-entry")
+                } else if module.id == .load {
+                    NavigationLink {
+                        TrainingLoadView()
+                    } label: {
+                        ModuleCardContent(module: module)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("training-load-entry")
+                } else if module.id == .stress {
+                    NavigationLink {
+                        StressView()
+                    } label: {
+                        ModuleCardContent(module: module)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("stress-entry")
                 } else if let metricID = module.primaryMetricID, let metric = HealthCatalog.byID[metricID] {
                     NavigationLink {
                         MetricDetailView(metric: metric)
