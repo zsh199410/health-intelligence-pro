@@ -201,6 +201,17 @@ final class ScreenshotsTests: XCTestCase {
         capture("energy", prefix: "light")
     }
 
+    func testBuild27SleepGoalOpens() {
+        launch(light: true, largeText: false)
+        let skip = app.buttons["跳过"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 10))
+        skip.tap()
+
+        tapTab("睡眠")
+        XCTAssertTrue(app.staticTexts["睡眠目标与短缺"].waitForExistence(timeout: 10))
+        capture("sleep-goal", prefix: "light")
+    }
+
     private func launch(light: Bool, largeText: Bool, extraArguments: [String] = []) {
         app = XCUIApplication()
         // Force the app process into light/dark via launch argument.
