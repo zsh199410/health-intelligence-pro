@@ -164,6 +164,19 @@ final class HealthKitRepository {
         }.sorted { $0.start < $1.start }
     }
 
+
+    /// Workout activity types by workout UUID, for display names. Runs the
+    /// same query as workouts(); callers that need both should call both.
+    func workoutActivityTypes(from startDate: Date, through now: Date) async throws -> [UUID: HKWorkoutActivityType] {
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: now)
+        let raw = try await sampleQuery(type: HKObjectType.workoutType(), predicate: predicate, limit: HKObjectQueryNoLimit)
+        var result: [UUID: HKWorkoutActivityType] = [:]
+        for case let workout as HKWorkout in raw {
+            result[workout.uuid] = workout.workoutActivityType
+        }
+        return result
+    }
+
     func sleepIntervals(from startDate: Date? = nil, through now: Date = Date()) async throws -> [SleepInterval] {
         let since = startDate ?? now.addingTimeInterval(-36 * 3600)
         let predicate = HKQuery.predicateForSamples(withStart: since, end: now)
