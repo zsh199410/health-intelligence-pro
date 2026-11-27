@@ -188,6 +188,19 @@ final class ScreenshotsTests: XCTestCase {
         capture("recovery-baseline", prefix: "light")
     }
 
+    func testBuild27EnergyPageOpens() {
+        // The Today energy module is not rendered in the simulator
+        // (no HealthKit data), so open the page through the screenshot
+        // launch argument instead of tapping the module card.
+        launch(light: true, largeText: false, extraArguments: ["-openEnergyPageForScreenshots"])
+        let skip = app.buttons["跳过"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 10))
+        skip.tap()
+        XCTAssertTrue(app.navigationBars["身体能量"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["精力与疲劳，是你自己的记录"].waitForExistence(timeout: 10))
+        capture("energy", prefix: "light")
+    }
+
     private func launch(light: Bool, largeText: Bool, extraArguments: [String] = []) {
         app = XCUIApplication()
         // Force the app process into light/dark via launch argument.
