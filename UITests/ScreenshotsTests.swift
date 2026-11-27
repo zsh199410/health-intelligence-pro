@@ -165,9 +165,14 @@ final class ScreenshotsTests: XCTestCase {
         // so open the page through the screenshot launch argument
         // instead of tapping the module card.
         launch(light: true, largeText: false, extraArguments: ["-openStressPageForScreenshots"])
+        // #281: both stress tests timed out on the skip button (10s).
+        // The page hook fires as soon as Today appears, so if onboarding
+        // was already complete the app may open straight onto the page
+        // with no skip button at all. Tap it only when it shows up.
         let skip = app.buttons["跳过"]
-        XCTAssertTrue(skip.waitForExistence(timeout: 10))
-        skip.tap()
+        if skip.waitForExistence(timeout: 20) {
+            skip.tap()
+        }
         XCTAssertTrue(app.navigationBars["压力"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["连接 Apple 健康"].waitForExistence(timeout: 10))
         capture("stress", prefix: "light")
@@ -227,9 +232,11 @@ final class ScreenshotsTests: XCTestCase {
 
     func testBuild27DarkStressPageOpens() {
         launch(light: false, largeText: false, extraArguments: ["-openStressPageForScreenshots"])
+        // Same skip-button resilience as testBuild27StressPageOpens (#281).
         let skip = app.buttons["跳过"]
-        XCTAssertTrue(skip.waitForExistence(timeout: 10))
-        skip.tap()
+        if skip.waitForExistence(timeout: 20) {
+            skip.tap()
+        }
         XCTAssertTrue(app.navigationBars["压力"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["连接 Apple 健康"].waitForExistence(timeout: 10))
         capture("stress", prefix: "dark")
