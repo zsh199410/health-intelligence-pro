@@ -92,6 +92,9 @@ jobs:
           version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")
           build=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")
           test -n "$version" && test -n "$build"
+          if [[ "$GITHUB_REF_NAME" == "gpt/build26-candidate-20261127" ]]; then
+            test "$version" = "2.0.0" && test "$build" = "26"
+          fi
 
           (
             cd dist
