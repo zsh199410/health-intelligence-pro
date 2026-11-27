@@ -129,6 +129,21 @@ struct ECGDetailView: View {
                         }
                     }
                 }
+                if let trace, trace.samples.count >= 2 {
+                    HealthCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            NavigationLink {
+                                ECGResearchRulerView(record: ecg, trace: trace)
+                            } label: {
+                                Label("心电测量标尺", systemImage: "ruler")
+                                    .font(.headline)
+                            }
+                            .accessibilityIdentifier("ecg-research-ruler-entry")
+                            Text("基于本次原始心电记录手动测量时间差与电压差；候选峰及间期仅供实验观察，不是疾病诊断。")
+                                .font(.footnote).foregroundStyle(HealthTheme.muted)
+                        }
+                    }
+                }
                 if let trace {
                     let report = ecg.report(trace: trace, timeZone: .current)
                     DisclosureGroup("本地心电记录摘要") {
