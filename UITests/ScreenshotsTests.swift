@@ -184,7 +184,7 @@ final class ScreenshotsTests: XCTestCase {
         XCTAssertTrue(entry.waitForExistence(timeout: 10))
         entry.tap()
         XCTAssertTrue(app.navigationBars["恢复基线"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["HRV 与静息心率相对个人基线的位置"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["心率变异性（HRV）与静息心率相对个人基线的位置"].waitForExistence(timeout: 10))
         capture("recovery-baseline", prefix: "light")
     }
 
@@ -223,6 +223,35 @@ final class ScreenshotsTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["运动负荷"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["训练负荷来自真实训练与你的主观用力评分"].waitForExistence(timeout: 10))
         capture("training-load", prefix: "light")
+    }
+
+    func testBuild27DarkStressPageOpens() {
+        launch(light: false, largeText: false, extraArguments: ["-openStressPageForScreenshots"])
+        let skip = app.buttons["跳过"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 10))
+        skip.tap()
+        XCTAssertTrue(app.navigationBars["压力"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["连接 Apple 健康"].waitForExistence(timeout: 10))
+        capture("stress", prefix: "dark")
+    }
+
+    func testBuild27LargeTextRecoveryPageOpens() {
+        launch(light: true, largeText: true)
+        let skip = app.buttons["跳过"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 10))
+        skip.tap()
+
+        tapTab("心脏")
+        let entry = app.buttons["autonomic-recovery-entry"]
+        for _ in 0..<5 {
+            if entry.exists && entry.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(entry.isHittable)
+        entry.tap()
+        XCTAssertTrue(app.navigationBars["恢复基线"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["心率变异性（HRV）与静息心率相对个人基线的位置"].waitForExistence(timeout: 10))
+        capture("recovery-baseline", prefix: "large-text")
     }
 
     private func launch(light: Bool, largeText: Bool, extraArguments: [String] = []) {
