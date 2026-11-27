@@ -85,7 +85,6 @@ struct RecoveryDataLoader {
         case .walking: return "步行"
         case .cycling: return "骑行"
         case .swimming: return "游泳"
-        case .strengthTraining: return "力量训练"
         case .yoga: return "瑜伽"
         case .hiking: return "徒步"
         case .elliptical: return "椭圆机"
