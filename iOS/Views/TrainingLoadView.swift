@@ -104,7 +104,7 @@ struct TrainingLoadView: View {
                                         }
                                         if workout.exertion != nil {
                                             Button("清除评分", role: .destructive) {
-                                                health.recoveryInputs.clearWorkoutExertion(for: workout.id)
+                                                health.recoveryInputs.rateWorkout(id: workout.id, exertion: nil)
                                                 Task { await health.loadRecovery() }
                                             }
                                         }
@@ -129,7 +129,7 @@ struct TrainingLoadView: View {
         Binding(
             get: { workout.exertion ?? 5 },
             set: { value in
-                health.recoveryInputs.rateWorkoutExertion(for: workout.id, value: value)
+                health.recoveryInputs.rateWorkout(id: workout.id, exertion: value)
                 Task { await health.loadRecovery() }
             }
         )

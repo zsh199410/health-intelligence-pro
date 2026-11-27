@@ -142,7 +142,7 @@ struct SleepView: View {
     private func adjustTarget(by delta: Double) {
         let next = min(720, max(240, sleepTargetMinutes + delta))
         sleepTargetMinutes = next
-        health.recoveryInputs.setSleepTarget(minutes: Int(next))
+        health.recoveryInputs.setSleepTarget(minutes: next)
         Task { await health.loadRecovery() }
     }
 
