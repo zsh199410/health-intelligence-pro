@@ -15,7 +15,7 @@ struct AutonomicRecoveryView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Text("HRV 与静息心率相对个人基线的位置")
+                    Text("心率变异性（HRV）与静息心率相对个人基线的位置")
                         .font(.title2.bold()).foregroundStyle(HealthTheme.ink)
                     recoveryContent
                     Text("本页只描述与个人基线的相对位置，不生成恢复分数，不作疾病判断。出现胸痛、严重呼吸困难等症状，应立即寻求急救。")

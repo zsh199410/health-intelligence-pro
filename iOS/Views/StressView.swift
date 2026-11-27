@@ -174,7 +174,7 @@ struct StressView: View {
             } else if hasNoData && failedIDs.isEmpty {
                 V3EmptyStateView(
                     title: "暂无压力相关记录",
-                    detail: "佩戴手表并记录心率、HRV 后再刷新；检查健康授权设置。",
+                    detail: "佩戴手表并记录心率、心率变异性（HRV）后再刷新；检查健康授权设置。",
                     symbol: "wind"
                 )
             } else if hasNoData {
@@ -206,7 +206,7 @@ struct StressView: View {
                 Label("连接 Apple 健康", systemImage: "heart.text.clipboard")
                     .font(HealthTheme.v3SectionFont)
                     .foregroundStyle(HealthTheme.v3Ink)
-                Text("授权后只读 HRV、心率、呼吸与活动数据，用于估算生理负荷信号。未授权、没有记录或设备不支持时，都会保持空状态，不生成测试数值。")
+                Text("授权后只读心率变异性（HRV）、心率、呼吸与活动数据，用于估算生理负荷信号。未授权、没有记录或设备不支持时，都会保持空状态，不生成测试数值。")
                     .font(HealthTheme.v3BodyFont)
                     .foregroundStyle(HealthTheme.v3Muted)
                 V3PrimaryButton(

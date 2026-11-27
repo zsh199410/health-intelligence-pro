@@ -127,13 +127,13 @@ struct EnergyView: View {
                     associationRow(title: "睡眠时长与次日精力", association: journal.sleepAndLaterEnergy,
                                    positive: "睡眠时间越长，次日精力倾向于越高",
                                    negative: "睡眠时间越长，次日精力倾向于越低")
-                    associationRow(title: "前日训练负荷与次日 HRV 变化", association: journal.previousLoadAndSDNN,
+                    associationRow(title: "前日训练负荷与次日心率变异性（HRV）变化", association: journal.previousLoadAndSDNN,
                                    positive: "前日训练负荷越高，次日静息 HRV 相对基线的变化倾向于越大",
                                    negative: "前日训练负荷越高，次日静息 HRV 相对基线的变化倾向于越小")
                     associationRow(title: "睡眠时长与次日 HRV 变化", association: journal.sleepAndLaterSDNN,
                                    positive: "睡眠时间越长，次日静息 HRV 相对基线的变化倾向于越大",
                                    negative: "睡眠时间越长，次日静息 HRV 相对基线的变化倾向于越小")
-                    Text("以上是描述性等级相关（Spearman），不是因果关系，也不是显著性检验；配对天数不足 7 天时不显示。")
+                    Text("以上是描述性等级相关（斯皮尔曼相关系数），不是因果关系，也不是显著性检验；配对天数不足 7 天时不显示。")
                         .font(.footnote).foregroundStyle(HealthTheme.muted)
                 }
             }

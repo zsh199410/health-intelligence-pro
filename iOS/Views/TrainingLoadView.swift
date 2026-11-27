@@ -146,7 +146,7 @@ struct TrainingLoadView: View {
                             .font(.subheadline.weight(.semibold))
                         Text("回顾窗口至 \(followUp.windowEnd.formatted(dayStyle)) \(followUp.windowEnd.formatted(timeStyle))（48 小时，或下一次训练开始前）")
                             .font(.subheadline).foregroundStyle(HealthTheme.muted)
-                        Text("窗口内静息 HRV 小时数：\(followUp.restingSDNNHours.count) 小时")
+                        Text("窗口内静息心率变异性（HRV）小时数：\(followUp.restingSDNNHours.count) 小时")
                             .font(.subheadline)
                         Text("窗口内精力自评 \(followUp.energyRatings.count) 次，疲劳自评 \(followUp.fatigueRatings.count) 次")
                             .font(.subheadline)
