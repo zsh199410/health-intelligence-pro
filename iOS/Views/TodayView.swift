@@ -8,6 +8,8 @@ struct TodayView: View {
     @State private var showSettings = false
     /// Set by RootView so the Sleep module card can switch to the Sleep tab.
     var onOpenSleepTab: () -> Void = {}
+    @State private var showStressPageForScreenshots = false
+    @State private var stressPageHookUsed = false
 
     private let primary = ["restingHeartRate", "hrv", "oxygenSaturation", "respiratoryRate"]
 
@@ -51,7 +53,15 @@ struct TodayView: View {
                     .preferredColorScheme(resolvedColorScheme)
             }
             .refreshable { await health.refresh() }
+            .navigationDestination(isPresented: $showStressPageForScreenshots) { StressView() }
             .task {
+                // Screenshot-only hook: the Today stress module is not
+                // rendered in the simulator (no HealthKit data), so the
+                // stress screenshot test opens the page directly.
+                if !stressPageHookUsed, ProcessInfo.processInfo.arguments.contains("-openStressPageForScreenshots") {
+                    stressPageHookUsed = true
+                    showStressPageForScreenshots = true
+                }
                 if health.lastRefreshedAt == nil && UserDefaults.standard.bool(forKey: "onboardingComplete") {
                     await health.refresh()
                 }
@@ -169,6 +179,14 @@ struct TodayView: View {
                         ModuleCardContent(module: module)
                     }
                     .buttonStyle(.plain)
+                } else if module.id == .stress {
+                    NavigationLink {
+                        StressView()
+                    } label: {
+                        ModuleCardContent(module: module)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("stress-entry")
                 } else if let metricID = module.primaryMetricID, let metric = HealthCatalog.byID[metricID] {
                     NavigationLink {
                         MetricDetailView(metric: metric)
