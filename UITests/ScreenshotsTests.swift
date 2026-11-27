@@ -173,6 +173,21 @@ final class ScreenshotsTests: XCTestCase {
         capture("stress", prefix: "light")
     }
 
+    func testBuild27RecoveryPageOpens() {
+        launch(light: true, largeText: false)
+        let skip = app.buttons["跳过"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 10))
+        skip.tap()
+
+        tapTab("心脏")
+        let entry = app.buttons["autonomic-recovery-entry"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 10))
+        entry.tap()
+        XCTAssertTrue(app.navigationBars["恢复基线"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["HRV 与静息心率相对个人基线的位置"].waitForExistence(timeout: 10))
+        capture("recovery-baseline", prefix: "light")
+    }
+
     private func launch(light: Bool, largeText: Bool, extraArguments: [String] = []) {
         app = XCUIApplication()
         // Force the app process into light/dark via launch argument.
