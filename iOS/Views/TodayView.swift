@@ -10,6 +10,8 @@ struct TodayView: View {
     var onOpenSleepTab: () -> Void = {}
     @State private var showStressPageForScreenshots = false
     @State private var showEnergyPageForScreenshots = false
+    @State private var showTrainingLoadPageForScreenshots = false
+    @State private var trainingLoadPageHookUsed = false
     @State private var energyPageHookUsed = false
     @State private var stressPageHookUsed = false
 
@@ -57,6 +59,7 @@ struct TodayView: View {
             .refreshable { await health.refresh() }
             .navigationDestination(isPresented: $showStressPageForScreenshots) { StressView() }
             .navigationDestination(isPresented: $showEnergyPageForScreenshots) { EnergyView() }
+            .navigationDestination(isPresented: $showTrainingLoadPageForScreenshots) { TrainingLoadView() }
             .task {
                 // Screenshot-only hook: the Today stress module is not
                 // rendered in the simulator (no HealthKit data), so the
@@ -68,6 +71,10 @@ struct TodayView: View {
                 if !energyPageHookUsed, ProcessInfo.processInfo.arguments.contains("-openEnergyPageForScreenshots") {
                     energyPageHookUsed = true
                     showEnergyPageForScreenshots = true
+                }
+                if !trainingLoadPageHookUsed, ProcessInfo.processInfo.arguments.contains("-openTrainingLoadPageForScreenshots") {
+                    trainingLoadPageHookUsed = true
+                    showTrainingLoadPageForScreenshots = true
                 }
                 if health.lastRefreshedAt == nil && UserDefaults.standard.bool(forKey: "onboardingComplete") {
                     await health.refresh()
@@ -202,6 +209,14 @@ struct TodayView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("energy-entry")
+                } else if module.id == .load {
+                    NavigationLink {
+                        TrainingLoadView()
+                    } label: {
+                        ModuleCardContent(module: module)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("training-load-entry")
                 } else if module.id == .stress {
                     NavigationLink {
                         StressView()
