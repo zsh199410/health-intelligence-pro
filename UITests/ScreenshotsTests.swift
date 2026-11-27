@@ -212,6 +212,19 @@ final class ScreenshotsTests: XCTestCase {
         capture("sleep-goal", prefix: "light")
     }
 
+    func testBuild27TrainingLoadPageOpens() {
+        // The Today load module is not rendered in the simulator
+        // (no HealthKit data), so open the page through the screenshot
+        // launch argument instead of tapping the module card.
+        launch(light: true, largeText: false, extraArguments: ["-openTrainingLoadPageForScreenshots"])
+        let skip = app.buttons["跳过"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 10))
+        skip.tap()
+        XCTAssertTrue(app.navigationBars["运动负荷"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["训练负荷来自真实训练与你的主观用力评分"].waitForExistence(timeout: 10))
+        capture("training-load", prefix: "light")
+    }
+
     private func launch(light: Bool, largeText: Bool, extraArguments: [String] = []) {
         app = XCUIApplication()
         // Force the app process into light/dark via launch argument.
