@@ -50,6 +50,11 @@ final class HealthViewModel: ObservableObject {
     @Published private(set) var recoveryFollowUps: [PostWorkoutFollowUp] = []
     @Published private(set) var recoveryFailed = false
     @Published private(set) var recoveryLoadedAt: Date?
+    /// Raw-sample diagnostics for the resting-context SDNN / resting
+    /// heart rate window behind `autonomicDay` (fetched, excluded,
+    /// dropped and truncated counts, plus the verbatim sources), nil
+    /// until loaded.
+    @Published private(set) var rawSampleDiagnostics: RawSampleDiagnostics?
     var isHealthAvailable: Bool { repository.isAvailable }
     var insights: [HealthInsight] { InsightEngine.insights(readings: readings, sleep: sleep) }
 
@@ -181,6 +186,7 @@ final class HealthViewModel: ObservableObject {
         do {
             let result = try await loader.loadRecovery()
             autonomicDay = result.autonomicToday
+            rawSampleDiagnostics = result.diagnostics
             recoveryReport = result.report
             recoveryJournal = result.journal
             recoveryWorkouts = result.workouts
@@ -190,6 +196,7 @@ final class HealthViewModel: ObservableObject {
             recoveryLoadedAt = .now
         } catch {
             autonomicDay = nil
+            rawSampleDiagnostics = nil
             recoveryReport = nil
             recoveryJournal = nil
             recoveryWorkouts = []
