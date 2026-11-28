@@ -8,34 +8,46 @@ import Foundation
 /// 估算规则（透明可审计，阈值见下）：
 /// - HRV（当日中位数）低于个人基线 15% 以上 +1，高于基线 15% 以上 -1。
 ///   恰好 15% 不触发（严格大于才记分）。
-/// - 静息心率高于个人基线 7% 以上 +1，低于基线 7% 以上 -1。
-///   恰好 7% 不触发。
+/// - 当日静息心率是日级值，只作基线比较用，不进小时采样：它从不出现在
+///   `StressHourInput` 里，由调用方随 `restingHeartRate` /
+///   `restingHeartRateRecordedAt` 单独传入。静息心率高于个人基线 7% 以上 +1，
+///   低于基线 7% 以上 -1。恰好 7% 不触发。
+/// - 当日静息心率须在 24 小时内：记录时间距评估时刻超过 24 小时即过期，
+///   恰好 24 小时仍有效；记录时间缺失时无法证明在 24 小时内，按过期处理。
+///   过期 → 基线不可用，水平为数据不足，置信度不高于中。缺失（未传值）
+///   不是过期，按已有规则计覆盖输入。
 /// - 静息时段（该小时步数与活动能量均有记录、且步数 < 100、活动能量 < 20 kcal）
-///   心率中位数高于静息心率 +15 次/分 +1；活动时段的心率升高记为“活动可解释”，
+///   心率中位数高于当日静息心率 +15 次/分 +1；活动时段的心率升高记为“活动可解释”，
 ///   不加分，并写入 drivers。步数或能量无记录的小时既不判定为静息，
-///   也不按活动解释，该小时的心率升高不计入任何一侧。
+///   也不按活动解释，该小时的心率升高不计入任何一侧。没有新鲜的当日静息
+///   心率时，这条规则不触发（不以小时中位数等推导值代替）。
 /// - 呼吸频率高于 20 次/分 +1（本估算没有呼吸频率基线参数，无基线时
 ///   同样只用 20 次/分这一条，且置信度降档）。
 /// - 汇总：points <= -1 为 low，0...1 为 moderate，>= 2 为 elevated。
 /// - 当日有效输入 < 3 项（HRV、静息心率、心率、呼吸频率中有值的项），
 ///   或 24 小时内 HRV 样本小时数为 0 且无静息心率时，返回 insufficient。
-/// - 无基线时置信度最高 medium，并注明“无个人基线，仅作当日相对参考”。
+///   过期的当日静息心率不计入有效输入。
+/// - 置信度封顶：无完整双基线（HRV 基线与静息心率基线缺一）时最高 medium；
+///   只有完整双基线、覆盖输入 >= 3 项、且至少 2 项不同信号实际驱动记分时，
+///   才给 high。永不以单项信号给 high。数据不足时置信度为 low。
+///   无基线时在 drivers 里注明“无个人基线，仅作当日相对参考”。
+/// - 逐小时级别只评估有真实小时覆盖、且有生理信号（HRV / 心率 / 呼吸频率）
+///   的小时；仅步数 / 能量、或无任何生理信号的小时返回 nil（数据不足），
+///   不补零、不给级别。逐小时偏高需要 2 项驱动。
 public struct StressHourInput: Equatable, Sendable {
     public let hourStart: Date
     public let hrvMedian: Double?
-    public let restingHeartRate: Double?
     public let heartRateMedian: Double?
     public let respiratoryRateMedian: Double?
     /// 该小时的步数 / 活动能量。nil 表示该小时无记录（未知），不是 0。
     public let steps: Double?
     public let activeEnergyKcal: Double?
 
-    public init(hourStart: Date, hrvMedian: Double? = nil, restingHeartRate: Double? = nil,
+    public init(hourStart: Date, hrvMedian: Double? = nil,
                 heartRateMedian: Double? = nil, respiratoryRateMedian: Double? = nil,
                 steps: Double? = nil, activeEnergyKcal: Double? = nil) {
         self.hourStart = hourStart
         self.hrvMedian = hrvMedian
-        self.restingHeartRate = restingHeartRate
         self.heartRateMedian = heartRateMedian
         self.respiratoryRateMedian = respiratoryRateMedian
         self.steps = steps
@@ -43,8 +55,9 @@ public struct StressHourInput: Equatable, Sendable {
     }
 
     /// 该小时是否有任一生理信号输入（步数与活动能量不算生理信号）。
+    /// 当日静息心率是日级值，不属于小时采样，不在这里出现。
     public var hasPhysiologicalInput: Bool {
-        return hrvMedian != nil || restingHeartRate != nil || heartRateMedian != nil || respiratoryRateMedian != nil
+        return hrvMedian != nil || heartRateMedian != nil || respiratoryRateMedian != nil
     }
 
     /// 静息时段：步数与活动能量均有记录且都很低的小时。
@@ -98,21 +111,36 @@ public struct StressEstimate: Equatable, Sendable {
 public enum StressCalculator {
     /// 当日汇总估算。hrvBaseline / restingBaseline 为个人基线（30 天趋势，
     /// 需至少 7 天数据才算有效基线）；任一缺失都视为无完整基线。
-    public static func estimate(hours: [StressHourInput], hrvBaseline: Double?, restingBaseline: Double?) -> StressEstimate {
+    /// restingHeartRate 为当日静息心率（日级值，不进小时采样），须随
+    /// restingHeartRateRecordedAt 一起传入；超过 24 小时即过期，过期时
+    /// 水平为数据不足。now 为评估时刻（默认当前时间；测试可传入固定值）。
+    public static func estimate(hours: [StressHourInput], hrvBaseline: Double?, restingBaseline: Double?,
+                                restingHeartRate: Double? = nil, restingHeartRateRecordedAt: Date? = nil,
+                                now: Date = Date()) -> StressEstimate {
         let totalInputs = 4
         let hrvValues = hours.compactMap { $0.hrvMedian }
-        let restingValues = hours.compactMap { $0.restingHeartRate }
         let heartRateValues = hours.compactMap { $0.heartRateMedian }
         let respiratoryValues = hours.compactMap { $0.respiratoryRateMedian }
+        let restingExpired = isRestingHeartRateExpired(
+            value: restingHeartRate, recordedAt: restingHeartRateRecordedAt, now: now)
+        let freshRestingHeartRate = freshRestingHeartRate(
+            value: restingHeartRate, recordedAt: restingHeartRateRecordedAt, now: now)
         var coveredInputs = 0
         if hrvValues.isEmpty == false { coveredInputs += 1 }
-        if restingValues.isEmpty == false { coveredInputs += 1 }
+        if freshRestingHeartRate != nil { coveredInputs += 1 }
         if heartRateValues.isEmpty == false { coveredInputs += 1 }
         if respiratoryValues.isEmpty == false { coveredInputs += 1 }
 
         let hasBaseline = hrvBaseline != nil && restingBaseline != nil
+        if restingExpired {
+            return StressEstimate(
+                level: .insufficient, confidence: .low, points: 0,
+                drivers: ["当日静息心率记录已超过 24 小时，基线不可用，数据不足"],
+                coveredInputs: coveredInputs, totalInputs: totalInputs, hasBaseline: false
+            )
+        }
         let hrvHours = hrvValues.count
-        let hasRestingHeartRate = restingValues.isEmpty == false
+        let hasRestingHeartRate = freshRestingHeartRate != nil
         if coveredInputs < 3 || (hrvHours == 0 && hasRestingHeartRate == false) {
             return StressEstimate(
                 level: .insufficient, confidence: .low, points: 0,
@@ -123,51 +151,56 @@ public enum StressCalculator {
 
         var points = 0
         var drivers: [String] = []
+        var contributingSignals = 0
 
         if let baseline = hrvBaseline, baseline > 0, let dailyHRV = median(hrvValues) {
             let change = (dailyHRV - baseline) / baseline
             if change < -0.15 {
                 points += 1
+                contributingSignals += 1
                 let percent = Int(((baseline - dailyHRV) / baseline * 100).rounded())
                 drivers.append("HRV 低于个人基线 \(percent)%")
             } else if change > 0.15 {
                 points -= 1
+                contributingSignals += 1
                 let percent = Int(((dailyHRV - baseline) / baseline * 100).rounded())
                 drivers.append("HRV 高于个人基线 \(percent)%")
             }
         }
 
-        if let baseline = restingBaseline, baseline > 0, let dailyResting = median(restingValues) {
+        if let baseline = restingBaseline, baseline > 0, let dailyResting = freshRestingHeartRate {
             let change = (dailyResting - baseline) / baseline
             if change > 0.07 {
                 points += 1
+                contributingSignals += 1
                 let percent = Int(((dailyResting - baseline) / baseline * 100).rounded())
                 drivers.append("静息心率高于个人基线 \(percent)%")
             } else if change < -0.07 {
                 points -= 1
+                contributingSignals += 1
                 let percent = Int(((baseline - dailyResting) / baseline * 100).rounded())
                 drivers.append("静息心率低于个人基线 \(percent)%")
             }
         }
 
-        let restingReference = median(restingValues)
         var restingElevatedHours = 0
         var activityExplainedHours = 0
-        for hour in hours {
-            guard let heartRate = hour.heartRateMedian else { continue }
-            let reference = hour.restingHeartRate ?? restingReference
-            guard let reference else { continue }
-            if heartRate > reference + 15 {
-                if hour.isRestingHour {
-                    restingElevatedHours += 1
-                } else if hour.isActiveHour {
-                    activityExplainedHours += 1
+        if let reference = freshRestingHeartRate {
+            for hour in hours {
+                guard let heartRate = hour.heartRateMedian else { continue }
+                if heartRate > reference + 15 {
+                    if hour.isRestingHour {
+                        restingElevatedHours += 1
+                    } else if hour.isActiveHour {
+                        activityExplainedHours += 1
+                    }
+                    // 步数/能量无记录：既不计入静息升高，也不按活动解释。
                 }
-                // 步数/能量无记录：既不计入静息升高，也不按活动解释。
             }
         }
         if restingElevatedHours > 0 {
             points += 1
+            contributingSignals += 1
             drivers.append("静息时段心率高于静息心率 15 次/分以上（\(restingElevatedHours) 小时）")
         }
         if activityExplainedHours > 0 {
@@ -182,6 +215,7 @@ public enum StressCalculator {
         }
         if respiratoryHighHours > 0 {
             points += 1
+            contributingSignals += 1
             drivers.append("呼吸频率高于 20 次/分（\(respiratoryHighHours) 小时）")
         }
 
@@ -201,10 +235,10 @@ public enum StressCalculator {
             drivers.append("当日生理信号与个人基线接近，无明显负荷驱动因素")
         }
 
+        // 置信度封顶：high 只给完整双基线 + 覆盖 >= 3 项 + 至少 2 项信号驱动；
+        // 单项信号、缺基线、覆盖不足时最高 medium。
         let confidence: StressConfidence
-        if hasBaseline == false {
-            confidence = .medium
-        } else if coveredInputs >= 3 {
+        if hasBaseline && coveredInputs >= 3 && contributingSignals >= 2 {
             confidence = .high
         } else {
             confidence = .medium
@@ -217,20 +251,27 @@ public enum StressCalculator {
         )
     }
 
-    /// 逐小时级别。输入按 hourStart 排序返回；有数据的小时给级别，
-    /// 无数据的小时给 nil 表示缺口，不补零。
+    /// 逐小时级别。输入按 hourStart 排序返回；有真实小时覆盖、且有生理信号
+    /// 的小时给级别，仅步数 / 能量、或无任何生理信号的小时给 nil 表示缺口，
+    /// 不补零。
     /// 注意：本方法没有基线参数，逐小时级别只用小时内绝对规则
-    /// （静息时段心率高于静息心率 +15 次/分、呼吸频率 > 20 次/分）；
+    /// （静息时段心率高于当日静息心率 +15 次/分、呼吸频率 > 20 次/分）；
     /// 与基线比较的 HRV / 静息心率驱动只在当日汇总 estimate 里计算。
-    public static func hourlyLevels(hours: [StressHourInput]) -> [(hourStart: Date, level: StressLevel?)] {
+    /// 当日静息心率是日级值，由调用方单独传入；过期或缺失时静息时段心率
+    /// 规则不触发。逐小时偏高需要 2 项驱动。
+    public static func hourlyLevels(hours: [StressHourInput], restingHeartRate: Double? = nil,
+                                    restingHeartRateRecordedAt: Date? = nil,
+                                    now: Date = Date()) -> [(hourStart: Date, level: StressLevel?)] {
         let sorted = hours.sorted { $0.hourStart < $1.hourStart }
+        let restingReference = freshRestingHeartRate(
+            value: restingHeartRate, recordedAt: restingHeartRateRecordedAt, now: now)
         return sorted.map { hour in
             guard hour.hasPhysiologicalInput else {
                 return (hourStart: hour.hourStart, level: nil)
             }
             var points = 0
             if hour.isRestingHour {
-                if let heartRate = hour.heartRateMedian, let resting = hour.restingHeartRate {
+                if let heartRate = hour.heartRateMedian, let resting = restingReference {
                     if heartRate > resting + 15 {
                         points += 1
                     }
@@ -245,6 +286,22 @@ public enum StressCalculator {
             let level: StressLevel = points >= 2 ? .elevated : .moderate
             return (hourStart: hour.hourStart, level: level)
         }
+    }
+
+    /// 新鲜的当日静息心率：有值、有记录时间、且记录时间距 now 不超过
+    /// 24 小时才返回原值，否则 nil。恰好 24 小时仍有效；记录时间缺失时
+    /// 无法证明在 24 小时内，按过期处理。
+    private static func freshRestingHeartRate(value: Double?, recordedAt: Date?, now: Date) -> Double? {
+        guard let value, let recordedAt else { return nil }
+        guard now.timeIntervalSince(recordedAt) <= 24 * 3600 else { return nil }
+        return value
+    }
+
+    /// 当日静息心率是否已过期：传了值，但记录时间缺失或距 now 超过 24 小时。
+    /// 未传值时不是过期（缺失），返回 false。
+    private static func isRestingHeartRateExpired(value: Double?, recordedAt: Date?, now: Date) -> Bool {
+        guard value != nil else { return false }
+        return freshRestingHeartRate(value: value, recordedAt: recordedAt, now: now) == nil
     }
 
     /// 小型中位数 helper（不改 BaselineAnalyzer，其 median 为 private）。
