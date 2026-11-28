@@ -2,16 +2,18 @@ import Foundation
 import HealthKit
 import HealthCore
 
-/// Builds the Build 27 recovery models from HealthKit records plus the
+/// Builds the Build 28 recovery models from HealthKit records plus the
 /// user's own stored inputs (sleep target, energy/fatigue ratings,
 /// workout RPE). Read-only against HealthKit; never fabricates values.
 ///
-/// Coverage: HealthKit alone cannot prove a day is complete (see
-/// RecoveryLoadReport). A past day counts as confirmed for a type when
-/// at least one record of that type falls in the day's window; for
-/// workouts, a past day with step samples but no workout counts as a
-/// confirmed rest day. The UI labels every figure "按已同步记录" and
-/// never claims a day is complete.
+/// Coverage (Build 28 P0-1): only days the user explicitly verified in
+/// RecoveryInputsStore count as confirmed (see RecoveryLoadReport).
+/// A sleep interval never confirms a full sleep day, and a workout or
+/// step count never confirms an activity day. Unverified days keep nil
+/// sleep / training values; missing data is never zero-filled. A
+/// verified day with no workouts is a genuine rest day (load 0).
+/// The UI labels every figure "按已同步记录" and never claims a day
+/// is complete.
 @MainActor
 struct RecoveryDataLoader {
     let repository: HealthKitRepository
@@ -40,29 +42,18 @@ struct RecoveryDataLoader {
             RatedWorkout(id: $0.id, start: $0.start, end: $0.end, activeMinutes: $0.activeMinutes,
                          exertion: inputs.exertion(for: $0.id))
         }
-        // Step days mark the device as worn and syncing; a past day with
-        // step samples but no workout is a confirmed rest day. If this
-        // query throws, rest-day confirmation degrades silently and only
-        // days with actual workouts count as confirmed.
-        let steps = (try? await repository.trend(HealthCatalog.byID["stepCount"]!, days: period.rawValue + 2, endingAt: asOf)) ?? []
-        let stepDays = Set(steps.map { calendar.startOfDay(for: $0.recordedAt) })
+        // Build 28 P0-1: only days the user explicitly verified are
+        // confirmed. Sleep intervals, workouts and step counts never
+        // confirm a day on their own.
         let today = calendar.startOfDay(for: asOf)
-        var sleepDays = Set<Date>()
-        var workoutDays = Set<Date>()
-        for offset in 0..<period.rawValue {
-            guard let date = calendar.date(byAdding: .day, value: offset - period.rawValue, to: today) else { continue }
-            let noon = calendar.date(bySettingHour: 12, minute: 0, second: 0, of: date)!
-            let window = DateInterval(start: calendar.date(byAdding: .day, value: -1, to: noon)!, end: noon)
-            if intervals.contains(where: { $0.start < window.end && $0.end > window.start }) {
-                sleepDays.insert(date)
-            }
-            if workouts.contains(where: { calendar.startOfDay(for: $0.end) == date }) || stepDays.contains(date) {
-                workoutDays.insert(date)
-            }
+        let reportDays = (0..<period.rawValue).compactMap { offset in
+            calendar.date(byAdding: .day, value: offset - period.rawValue, to: today)
         }
+        let sleepDays = Set(reportDays.filter { inputs.isSleepVerified(on: $0) })
+        let workoutDays = Set(reportDays.filter { inputs.isActivityVerified(on: $0) })
         let report = RecoveryLoadReport(period: period, asOf: asOf, targetMinutes: inputs.sleepTargetMinutes,
-                                        sleep: intervals, confirmedSleepDays: sleepDays,
-                                        workouts: workouts, confirmedWorkoutDays: workoutDays)
+                                         sleep: intervals, confirmedSleepDays: sleepDays,
+                                         workouts: workouts, confirmedWorkoutDays: workoutDays)
         var snapshots: [AutonomicRecoveryDay] = []
         for day in report.days {
             let endOfDay = calendar.date(bySettingHour: 23, minute: 59, second: 59, of: day.date) ?? day.date
