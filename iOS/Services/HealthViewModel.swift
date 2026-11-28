@@ -6,6 +6,13 @@ import HealthCore
 final class HealthViewModel: ObservableObject {
     @Published private(set) var readings: [String: MetricReading] = [:]
     @Published private(set) var trends: [String: [TrendPoint]] = [:]
+    /// Metric IDs whose most recent `loadTrend` failed. The previously loaded
+    /// points are kept, so the view can show them as stale instead of as the
+    /// newly requested window.
+    @Published private(set) var trendFailedMetricIDs: Set<String> = []
+    /// The window (in days) the stored `trends` points were actually loaded
+    /// for, per metric. A failed reload for another window leaves this unchanged.
+    @Published private(set) var trendWindowDays: [String: Int] = [:]
     @Published private(set) var sleep: SleepSummary?
     @Published private(set) var sleepSegments: [SleepInterval] = []
     /// Daily sleep totals for the past 7 calendar days, grouped by wake date.
@@ -145,8 +152,16 @@ final class HealthViewModel: ObservableObject {
     }
 
     func loadTrend(for metric: HealthMetric, days: Int = 30) async {
-        do { trends[metric.id] = try await repository.trend(metric, days: days) }
-        catch { message = "读取趋势失败：\(error.localizedDescription)" }
+        do {
+            trends[metric.id] = try await repository.trend(metric, days: days)
+            trendWindowDays[metric.id] = days
+            trendFailedMetricIDs.remove(metric.id)
+        } catch {
+            // Keep the previously loaded points and their window: the view
+            // marks them as stale instead of presenting them as the new window.
+            trendFailedMetricIDs.insert(metric.id)
+            message = "读取趋势失败：\(error.localizedDescription)"
+        }
     }
 
     func loadSleepHistory(days: Int = 7) async {
