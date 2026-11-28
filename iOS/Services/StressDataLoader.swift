@@ -29,10 +29,15 @@ final class StressDataLoader: ObservableObject {
         defer { isLoading = false }
         var loaded: [String: [TrendPoint]] = [:]
         var failures: [String] = []
+        // The 24-hour window is fixed here, by the caller: the repository
+        // takes from/through and never reads the clock itself.
+        let through = Date()
+        let from = Calendar.current.date(byAdding: .hour, value: -24, to: through)
+            ?? through.addingTimeInterval(-24 * 3600)
         for id in Self.metricIDs {
             guard let metric = HealthCatalog.byID[id] else { continue }
             do {
-                loaded[id] = try await repository.samples(metric, hours: 24)
+                loaded[id] = try await repository.samples(metric, from: from, through: through)
             } catch {
                 failures.append(id)
             }
