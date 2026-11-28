@@ -12,6 +12,10 @@ import HealthCore
 /// rate against the personal baseline, resting-hour heart-rate elevation,
 /// and respiratory rate. It is labeled throughout as an estimate, never
 /// as a stress diagnosis, an emotion judgement, or medical advice.
+///
+/// P0-3: the day's resting heart rate is a day-level value only — it is
+/// never copied into hourly samples, and it is used only while fresh
+/// (recorded within 24 hours); an expired value is not used at all.
 struct StressView: View {
     @EnvironmentObject private var health: HealthViewModel
     @StateObject private var loader: StressDataLoader
@@ -35,8 +39,12 @@ struct StressView: View {
         health.readings["restingHeartRate"]?.value
     }
 
+    private var restingHeartRateRecordedAt: Date? {
+        health.readings["restingHeartRate"]?.recordedAt
+    }
+
     private var stressHours: [StressHourInput] {
-        loader.hourlyInputs(restingHeartRate: restingHeartRateValue)
+        loader.hourlyInputs()
     }
 
     private var hasNoData: Bool {
@@ -67,14 +75,22 @@ struct StressView: View {
     private var restingBaseline: Double? { restingSummary.baseline }
 
     private var estimate: StressEstimate {
+        // The day's resting heart rate is passed separately, with its
+        // recorded time: `StressCalculator` treats it as expired after
+        // 24 hours and then reports insufficient data.
         StressCalculator.estimate(
-            hours: stressHours, hrvBaseline: hrvBaseline, restingBaseline: restingBaseline
+            hours: stressHours, hrvBaseline: hrvBaseline, restingBaseline: restingBaseline,
+            restingHeartRate: restingHeartRateValue,
+            restingHeartRateRecordedAt: restingHeartRateRecordedAt, now: .now
         )
     }
 
     private var hourlyLevelByHour: [Date: StressLevel] {
         var result: [Date: StressLevel] = [:]
-        for entry in StressCalculator.hourlyLevels(hours: stressHours) {
+        for entry in StressCalculator.hourlyLevels(
+            hours: stressHours, restingHeartRate: restingHeartRateValue,
+            restingHeartRateRecordedAt: restingHeartRateRecordedAt, now: .now
+        ) {
             if let level = entry.level {
                 result[entry.hourStart] = level
             }
@@ -414,7 +430,7 @@ struct StressView: View {
 
     private var disclaimerCard: some View {
         V3Card {
-            Label("仅为生理信号估算，不是压力诊断、情绪判断或医疗建议。出现持续不适请咨询专业人员。", systemImage: "info.circle")
+            Label("阈值来自公开研究启发式，未经临床验证；结果为生理信号估算，不是压力诊断、情绪判断或医疗建议。出现持续不适请咨询专业人员。", systemImage: "info.circle")
                 .font(.footnote)
                 .foregroundStyle(HealthTheme.v3Muted)
         }
