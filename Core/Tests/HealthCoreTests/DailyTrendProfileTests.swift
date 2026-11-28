@@ -35,12 +35,12 @@ final class DailyTrendProfileTests: XCTestCase {
     func testYesterdayMatchesDurationAcrossDSTOrRejectsImpossibleWindow() {
         var c = Calendar(identifier: .gregorian)
         c.timeZone = TimeZone(identifier: "America/New_York")!
-        let expected = c.date(from: DateComponents(year: 2023, month: 3, day: 11, hour: 12))!
-        XCTAssertEqual(DailyTrendProfile.yesterday(from: c.date(from: DateComponents(year: 2023, month: 3, day: 12, hour: 12))!, calendar: c), expected)
-        var broken = Calendar(identifier: .gregorian)
-        broken.timeZone = TimeZone(identifier: "America/New_York")!
-        broken.firstWeekday = 1
-        XCTAssertNil(DailyTrendProfile.yesterday(from: expected, calendar: broken))
+        let noon = c.date(from: DateComponents(year: 2025, month: 3, day: 10, hour: 12))!
+        let yesterday = DailyTrendProfile.previousCutoff(end: noon, calendar: c)!
+        XCTAssertEqual(yesterday.timeIntervalSince(c.startOfDay(for: yesterday)), 12 * 3600)
+        let late = c.date(byAdding: .hour, value: 11, to: noon)!
+        XCTAssertNil(DailyTrendProfile.previousCutoff(end: late, calendar: c))
+        XCTAssertNil(DailyTrendProfile.previousCutoff(end: c.startOfDay(for: noon), calendar: c))
     }
 
     func testFutureSamplesAreExcludedFromRunsAndTodayValue() {
