@@ -137,7 +137,7 @@ struct EnergyView: View {
                     }
                     .font(.subheadline.weight(selected ? .bold : .regular))
                     .frame(width: 30, height: 30)
-                    .background(selected ? HealthTheme.ink : HealthTheme.chip)
+                    .background(selected ? HealthTheme.ink : HealthTheme.surface)
                     .foregroundStyle(selected ? .white : HealthTheme.ink)
                     .clipShape(RoundedRectangle(cornerRadius: 7))
                     .accessibilityLabel("\(title) \(score) 分")
@@ -158,13 +158,13 @@ struct EnergyView: View {
                     if journal.days.isEmpty {
                         EmptyHealthState(title: "暂无自评记录", detail: "为今天打分后，这里会显示近 7 日的精力与疲劳记录。", symbol: "bolt.fill")
                     } else {
-                        ForEach(journal.days) { day in
+                        ForEach(journal.days, id: \.load.date) { day in
                             HStack {
                                 Text(day.load.date.formatted(dayStyle)).font(.subheadline)
                                 Spacer()
-                                Text("精力 \(day.energy.map { String(format: "%.0f", $0) } ?? "–")")
+                                Text("精力 \(day.energy.map { String(format: "%.0f", $0.value) } ?? "–")")
                                     .font(.subheadline)
-                                Text("疲劳 \(day.fatigue.map { String(format: "%.0f", $0) } ?? "–")")
+                                Text("疲劳 \(day.fatigue.map { String(format: "%.0f", $0.value) } ?? "–")")
                                     .font(.subheadline)
                                 if day.energy != nil || day.fatigue != nil {
                                     Button("删除当日自评") {
@@ -181,7 +181,7 @@ struct EnergyView: View {
                                     .accessibilityLabel("删除\(day.load.date.formatted(dayStyle))的自评")
                                 }
                             }
-                            if day.id != journal.days.last?.id { Divider() }
+                            if day.load.date != journal.days.last?.load.date { Divider() }
                         }
                     }
                 }
@@ -199,15 +199,23 @@ struct EnergyView: View {
                     if samples.count < 3 {
                         EmptyHealthState(title: "样本还太少", detail: "至少需要 3 天的自评记录，才会显示三组描述性关联。", symbol: "chart.bar")
                     } else {
-                        associationRow(title: "睡眠时长 – 精力", text: journal.sleepEnergy)
+                        associationRow(title: "睡眠时长 – 之后精力", text: associationText(journal.sleepAndLaterEnergy))
                         Divider()
-                        associationRow(title: "活动量 – 疲劳", text: journal.activityFatigue)
+                        associationRow(title: "前日训练负荷 – 次日心率变异性", text: associationText(journal.previousLoadAndSDNN))
                         Divider()
-                        associationRow(title: "静息心率 – 精力", text: journal.restingHREnergy)
+                        associationRow(title: "睡眠时长 – 之后心率变异性", text: associationText(journal.sleepAndLaterSDNN))
                     }
                 }
             }
         }
+    }
+
+
+    private func associationText(_ association: RecoveryJournal.Association) -> String {
+        if let rho = association.rho {
+            return String(format: "相关系数 %.2f，配对 %d 天", rho, association.pairedDays)
+        }
+        return "配对 \(association.pairedDays) 天，不足 7 对"
     }
 
 
