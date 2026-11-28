@@ -242,11 +242,108 @@ struct MetricDetailView: View {
     let metric: HealthMetric
     @EnvironmentObject private var health: HealthViewModel
     @State private var selectedDays = 30
+    @State private var dailyListExpanded = false
     private let ranges = [7, 30, 90]
 
     private var points: [TrendPoint] { health.trends[metric.id] ?? [] }
+    /// The most recent `loadTrend` failed while older points are still held.
+    /// Only then is the retained data shown as stale, with its old window.
+    private var isTrendStale: Bool {
+        health.trendFailedMetricIDs.contains(metric.id) && !points.isEmpty
+    }
+    /// The window the points on screen were actually loaded for. A failed
+    /// reload keeps the previous window's view instead of presenting it as
+    /// the newly requested window.
+    private var displayedDays: Int {
+        if isTrendStale, let oldDays = health.trendWindowDays[metric.id] {
+            return oldDays
+        }
+        return selectedDays
+    }
+    /// The single entry point for trend data: DailyTrendProfile drops
+    /// future samples and splits the window into gap-free runs.
+    private var profile: DailyTrendProfile {
+        DailyTrendProfile(points: points, end: .now)
+    }
+    private var trendRuns: [[TrendPoint]] { profile.runs(days: displayedDays) }
+    private var trendPoints: [TrendPoint] { trendRuns.flatMap { $0 } }
     private var baseline: BaselineSummary {
-        BaselineAnalyzer.summarize(points: points, now: .now)
+        BaselineAnalyzer.summarize(points: trendPoints, now: .now, windowDays: displayedDays)
+    }
+    private var lastTrendDate: Date? { trendPoints.map(\.recordedAt).max() }
+    /// Stale notice, shown only when this load failed and older points exist.
+    /// It carries the old window and the last recorded date.
+    private var staleNotice: String? {
+        guard isTrendStale, let lastDate = lastTrendDate else { return nil }
+        let last = lastDate.formatted(.dateTime.year().month().day().locale(Locale(identifier: "zh_CN")))
+        if displayedDays == selectedDays {
+            return "本次刷新失败，显示的是之前加载的近\(displayedDays)天数据，最后记录\(last)。"
+        }
+        return "本次刷新失败，显示的是之前加载的近\(displayedDays)天数据，最后记录\(last)；当前选择的近\(selectedDays)天未能加载。"
+    }
+
+    private struct DailyRow: Identifiable {
+        let date: Date
+        let value: Double?
+        var id: Date { date }
+    }
+    private struct DailySection: Identifiable {
+        let id = UUID()
+        let hasValue: Bool
+        let rows: [DailyRow]
+    }
+    /// Days in the displayed window, grouped into gap-free runs and the
+    /// missing-day blocks between them, oldest first. This is what
+    /// VoiceOver reads, so it matches the chart exactly.
+    private var dailySections: [DailySection] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let values = Dictionary(
+            uniqueKeysWithValues: trendPoints.map { (calendar.startOfDay(for: $0.recordedAt), $0.value) }
+        )
+        var sections: [DailySection] = []
+        var currentRows: [DailyRow] = []
+        var currentHasValue: Bool?
+        for offset in (1 - displayedDays)...0 {
+            guard let date = calendar.date(byAdding: .day, value: offset, to: today) else { continue }
+            let value = values[date]
+            if currentHasValue != (value != nil) {
+                if let hasValue = currentHasValue, !currentRows.isEmpty {
+                    sections.append(DailySection(hasValue: hasValue, rows: currentRows))
+                    currentRows = []
+                }
+                currentHasValue = value != nil
+            }
+            currentRows.append(DailyRow(date: date, value: value))
+        }
+        if let hasValue = currentHasValue, !currentRows.isEmpty {
+            sections.append(DailySection(hasValue: hasValue, rows: currentRows))
+        }
+        return sections
+    }
+
+    private func formattedValue(_ value: Double) -> String {
+        metric.unitText.isEmpty
+            ? String(format: "%.1f", value)
+            : String(format: "%.1f %@", value, metric.unitText)
+    }
+
+    private func dailySectionTitle(for section: DailySection) -> String {
+        guard let first = section.rows.first?.date, let last = section.rows.last?.date else { return "" }
+        let start = first.formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN")))
+        if first == last {
+            return section.hasValue ? "连续记录 \(start)" : "无记录 \(start)"
+        }
+        let end = last.formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN")))
+        return section.hasValue ? "连续记录 \(start)至\(end)" : "无记录 \(start)至\(end)"
+    }
+
+    private func dailyRowAccessibilityLabel(for row: DailyRow) -> String {
+        let date = row.date.formatted(.dateTime.year().month().day().locale(Locale(identifier: "zh_CN")))
+        if let value = row.value {
+            return "\(date)，\(formattedValue(value))"
+        }
+        return "\(date)，无记录"
     }
 
     var body: some View {
@@ -264,23 +361,65 @@ struct MetricDetailView: View {
                             .pickerStyle(.menu)
                             .accessibilityLabel("选择历史趋势范围")
                         }
-                        if points.isEmpty {
+                        if let staleNotice {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Label("过期数据", systemImage: "exclamationmark.triangle")
+                                    .font(.subheadline.bold()).foregroundStyle(HealthTheme.amber)
+                                Text(staleNotice)
+                                    .font(.footnote).foregroundStyle(HealthTheme.muted)
+                                Button("重新加载") {
+                                    Task { await health.loadTrend(for: metric, days: selectedDays) }
+                                }
+                                .font(.footnote.bold())
+                            }
+                        }
+                        if trendPoints.isEmpty {
                             EmptyHealthState(title: "暂无趋势记录", detail: "检查数据来源和 Apple 健康授权。", symbol: "chart.xyaxis.line")
                                 .frame(minHeight: 180)
                         } else {
-                            Chart(points) { point in
-                                LineMark(x: .value("日期", point.recordedAt),
-                                         y: .value(metric.name, point.value))
-                                    .interpolationMethod(.linear)
-                                    .foregroundStyle(HealthTheme.teal)
-                                PointMark(x: .value("日期", point.recordedAt),
-                                          y: .value(metric.name, point.value))
-                                    .symbolSize(13).foregroundStyle(HealthTheme.jade)
+                            Chart {
+                                ForEach(Array(trendRuns.enumerated()), id: \.offset) { index, run in
+                                    ForEach(run) { point in
+                                        LineMark(x: .value("日期", point.recordedAt),
+                                                 y: .value(metric.name, point.value),
+                                                 series: .value("连续记录", index))
+                                            .interpolationMethod(.linear)
+                                            .foregroundStyle(HealthTheme.teal)
+                                        PointMark(x: .value("日期", point.recordedAt),
+                                                  y: .value(metric.name, point.value))
+                                            .symbolSize(13).foregroundStyle(HealthTheme.jade)
+                                    }
+                                }
                             }.frame(height: 225)
                                 .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) }
-                                .accessibilityLabel("\(metric.name) 近\(selectedDays)天每日汇总趋势图")
+                                .accessibilityHidden(true)
+                            DisclosureGroup("逐日数值", isExpanded: $dailyListExpanded) {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    ForEach(dailySections) { section in
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(dailySectionTitle(for: section))
+                                                .font(.caption.bold()).foregroundStyle(HealthTheme.muted)
+                                            ForEach(section.rows) { row in
+                                                HStack {
+                                                    Text(row.date.formatted(.dateTime.month().day().locale(Locale(identifier: "zh_CN"))))
+                                                    Spacer()
+                                                    if let value = row.value {
+                                                        Text(formattedValue(value))
+                                                    } else {
+                                                        Text("无记录").foregroundStyle(HealthTheme.muted)
+                                                    }
+                                                }
+                                                .font(.subheadline)
+                                                .accessibilityElement(children: .combine)
+                                                .accessibilityLabel(dailyRowAccessibilityLabel(for: row))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            .font(.subheadline)
                         }
-                        Text("按自然日汇总可用记录；最新读数与每日平均值可能不同。不同测量来源不一定可直接比较。")
+                        Text("按自然日汇总可用记录；最新读数与每日平均值可能不同。不同测量来源不一定可直接比较。缺测的日期不连线，图表只连接连续有记录的日期。")
                             .font(.footnote).foregroundStyle(HealthTheme.muted)
                     }
                 }
