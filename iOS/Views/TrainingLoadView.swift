@@ -2,13 +2,17 @@ import SwiftUI
 import Charts
 import HealthCore
 
+
 /// 训练负荷页：近 7 日训练负荷（活动分钟 × 主观用力程度），训练记录
 /// （含 RPE 评分入口）与最近一次训练的 48 小时运动后回顾。
 /// 负荷只在训练有真实 RPE 评分时才算；未评分的训练不计入负荷。
 struct TrainingLoadView: View {
     @EnvironmentObject private var health: HealthViewModel
+    @State private var showingClearAllConfirmation = false
+
     private let dayStyle = Date.FormatStyle.dateTime.month().day().weekday(.abbreviated).locale(Locale(identifier: "zh_CN"))
     private let timeStyle = Date.FormatStyle.dateTime.hour().minute().locale(Locale(identifier: "zh_CN"))
+
 
     var body: some View {
         NavigationStack {
@@ -22,10 +26,11 @@ struct TrainingLoadView: View {
                         loadSection(report)
                         workoutsSection(report)
                         followUpSection
+                        clearAllSection
                     } else {
                         ProgressView("正在读取训练记录")
                     }
-                    Text("本页不推断你是否适合训练，也不给恢复倒计时；48 小时回顾只是观察记录。")
+                    Text("本页不推断你是否适合训练，也不给恢复倒计时；48 小时回顾只是观察记录。自评仅保存在本机，不进入备份。")
                         .font(.footnote).foregroundStyle(HealthTheme.muted)
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(18)
             }
@@ -35,9 +40,10 @@ struct TrainingLoadView: View {
                 if health.recoveryLoadedAt == nil { await health.loadRecovery() }
             }
             .refreshable { await health.loadRecovery() }
+            .accessibilityIdentifier("training-load-screen")
         }
-        .accessibilityIdentifier("training-load-screen")
     }
+
 
     private func loadSection(_ report: RecoveryLoadReport) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -71,6 +77,7 @@ struct TrainingLoadView: View {
             }
         }
     }
+
 
     private func trainingLoadDayRow(_ day: RecoveryLoadReport.Day, report: RecoveryLoadReport) -> some View {
         let verified = health.recoveryInputs.isActivityVerified(on: day.date)
@@ -116,6 +123,7 @@ struct TrainingLoadView: View {
         }
     }
 
+
     private func trainingDayText(_ day: RecoveryLoadReport.Day, report: RecoveryLoadReport) -> String {
         if let load = day.trainingLoad {
             return load == 0 ? "已确认休息日，负荷 0" : "负荷 \(Int(load))"
@@ -129,12 +137,14 @@ struct TrainingLoadView: View {
         return day.latestWorkoutEnd == nil ? "无训练记录，未核实" : "有训练，未核实"
     }
 
+
     private func hasUnratedWorkout(on date: Date, report: RecoveryLoadReport) -> Bool {
         let start = report.calendar.startOfDay(for: date)
         return health.recoveryWorkouts.contains { workout in
             report.calendar.startOfDay(for: workout.end) == start && workout.exertion == nil
         }
     }
+
 
     @ViewBuilder private func trainingLoadTotals(_ report: RecoveryLoadReport) -> some View {
         let loads = report.days.compactMap(\.trainingLoad)
@@ -151,6 +161,7 @@ struct TrainingLoadView: View {
                 .font(.subheadline).foregroundStyle(HealthTheme.muted)
         }
     }
+
 
     private func workoutsSection(_ report: RecoveryLoadReport) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -196,12 +207,13 @@ struct TrainingLoadView: View {
                             if workout.id != health.recoveryWorkouts.sorted(by: { $0.start > $1.start }).last?.id { Divider() }
                         }
                     }
-                    Text("主观用力程度（RPE）0–10 分由你本人打分：0 是毫不费力，10 是竭尽全力；没有评分的训练不计入负荷。")
+                    Text("主观用力程度（RPE）0–10 分由你本人打分：0 是毫不费力，10 是竭尽全力；没有评分的训练不计入负荷。自评仅保存在本机，不进入备份。")
                         .font(.footnote).foregroundStyle(HealthTheme.muted)
                 }
             }
         }
     }
+
 
     private func exertionBinding(for workout: RatedWorkout) -> Binding<Double> {
         Binding(
@@ -212,6 +224,7 @@ struct TrainingLoadView: View {
             }
         )
     }
+
 
     private var followUpSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -240,6 +253,35 @@ struct TrainingLoadView: View {
                         .font(.footnote).foregroundStyle(HealthTheme.muted)
                 }
             }
+        }
+    }
+
+
+    /// Build 28 P1-5: 删除自评入口。清空全部自评需二次确认；睡眠目标
+    /// 与核实记录不是评分，不受影响。自评仅保存在本机，不进入备份。
+    /// 单项训练评分的清除入口已存在于训练记录中（清除评分）。
+    private var clearAllSection: some View {
+        HealthCard {
+            VStack(alignment: .leading, spacing: 9) {
+                Text("删除自评").font(.headline)
+                Text("清空全部自评会删除所有精力、疲劳与训练用力评分，且无法恢复。睡眠目标与核实记录不受影响。仅保存在本机，不进入备份。")
+                    .font(.footnote).foregroundStyle(HealthTheme.muted)
+                Button("清空全部自评", role: .destructive) {
+                    showingClearAllConfirmation = true
+                }
+                .font(.subheadline)
+                .accessibilityLabel("清空全部自评")
+                .disabled(!health.recoveryInputs.hasAnySelfRating)
+            }
+        }
+        .confirmationDialog("清空全部自评？", isPresented: $showingClearAllConfirmation, titleVisibility: .visible) {
+            Button("清空全部自评", role: .destructive) {
+                health.recoveryInputs.clearAllSelfRatings()
+                Task { await health.loadRecovery() }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("将删除所有精力、疲劳与训练用力评分，且无法恢复。")
         }
     }
 }
