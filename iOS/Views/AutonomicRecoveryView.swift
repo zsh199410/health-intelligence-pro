@@ -134,7 +134,7 @@ struct AutonomicRecoveryView: View {
                         }
                         .accessibilityLabel("今日各小时静息 HRV 分布")
                     }
-                    Text("已采样 \(day.observedHours) 小时 · 共 \(day.hours.count) 个已过小时（\(Int((day.observedHourFraction * 100).rounded()))%）。没有采样的小时留空，不补零。")
+                    Text("已采样 \(day.observedHours) 小时 · 共 \(day.hours.count) 个已过小时（\(Int((day.observedHourFraction * 100).rounded()))%。没有采样的小时留空，不补零。")
                         .font(.footnote).foregroundStyle(HealthTheme.muted)
                 }
             }
@@ -149,6 +149,11 @@ struct AutonomicRecoveryView: View {
                     .font(.subheadline).foregroundStyle(HealthTheme.muted)
                 Text("静息心率只作为当日的背景，不会按小时分摊到 HRV 采样上。")
                     .font(.footnote).foregroundStyle(HealthTheme.muted)
+                if let diagnostics = health.rawSampleDiagnostics {
+                    LabeledContent("样本来源", value: diagnostics.sources.isEmpty ? "未取到样本" : diagnostics.sources.joined(separator: "、"))
+                    Text("取回 \(diagnostics.fetchedCount) 条 · 排除非手表 \(diagnostics.excludedNonWatchCount) 条 · 排除训练中 \(diagnostics.excludedDuringWorkoutCount) 条 · 去重丢弃 \(diagnostics.droppedDuplicateCount) 条 · 未来丢弃 \(diagnostics.droppedFutureCount) 条\(diagnostics.truncated ? " · 已截断" : "")")
+                        .font(.footnote).foregroundStyle(HealthTheme.muted)
+                }
             }
         }
     }
