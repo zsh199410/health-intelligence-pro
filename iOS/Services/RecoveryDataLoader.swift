@@ -20,10 +20,13 @@ struct RecoveryDataLoader {
     let inputs: RecoveryInputsStore
 
     /// One autonomic snapshot for asOf's day: resting-context SDNN and
-    /// resting heart rate against the 30-day personal baseline.
-    func loadAutonomic(asOf: Date = Date()) async throws -> AutonomicRecoveryDay {
-        let (sdnn, bpm) = try await rawSamples()
-        return AutonomicRecoveryDay(restingSDNN: sdnn, restingBPM: bpm, asOf: asOf)
+    /// resting heart rate against the 30-day personal baseline, plus the
+    /// raw-sample diagnostics behind the snapshot.
+    func loadAutonomic(asOf: Date = Date()) async throws
+        -> (day: AutonomicRecoveryDay, diagnostics: RawSampleDiagnostics) {
+        let raw = try await rawSamples(asOf: asOf, windowDays: 30)
+        let day = AutonomicRecoveryDay(restingSDNN: raw.sdnn, restingBPM: raw.bpm, asOf: asOf)
+        return (day, raw.diagnostics)
     }
 
     /// Week report + journal + rated workouts + today's autonomic
@@ -32,12 +35,19 @@ struct RecoveryDataLoader {
     func loadRecovery(period: RecoveryLoadReport.Period = .week, asOf: Date = Date()) async throws
         -> (report: RecoveryLoadReport, journal: RecoveryJournal, workouts: [RatedWorkout],
             autonomicToday: AutonomicRecoveryDay, workoutTypeNames: [UUID: String],
-            followUps: [PostWorkoutFollowUp]) {
+            followUps: [PostWorkoutFollowUp], diagnostics: RawSampleDiagnostics) {
         let calendar = Calendar.current
-        let (sdnn, bpm) = try await rawSamples()
+        // Resting filter needs workout intervals over the whole raw
+        // window (period + 30 calendar days), not just the report
+        // window, so fetch them once here and reuse them for the
+        // report below.
+        let window = SourcedSampleWindow.window(days: period.rawValue + 30, asOf: asOf, calendar: calendar)
+        let filterWorkouts = try await repository.workouts(from: window.from, through: asOf)
+        let (sdnn, bpm, diagnostics) = try await rawSamples(asOf: asOf, windowDays: period.rawValue + 30,
+                                                             workouts: filterWorkouts)
         let from = calendar.date(byAdding: .day, value: -(period.rawValue + 2), to: calendar.startOfDay(for: asOf))!
         let intervals = try await repository.sleepIntervals(from: from, through: asOf)
-        let rawWorkouts = try await repository.workouts(from: from, through: asOf)
+        let rawWorkouts = filterWorkouts.filter { $0.end > from }
         let workouts = rawWorkouts.map {
             RatedWorkout(id: $0.id, start: $0.start, end: $0.end, activeMinutes: $0.activeMinutes,
                          exertion: inputs.exertion(for: $0.id))
@@ -60,12 +70,12 @@ struct RecoveryDataLoader {
             snapshots.append(AutonomicRecoveryDay(restingSDNN: sdnn, restingBPM: bpm, asOf: endOfDay))
         }
         let journal = RecoveryJournal(report: report, autonomic: snapshots,
-                                      energy: inputs.energyPoints(), fatigue: inputs.fatiguePoints())
+                        energy: inputs.energyPoints(), fatigue: inputs.fatiguePoints())
         let autonomicToday = AutonomicRecoveryDay(restingSDNN: sdnn, restingBPM: bpm, asOf: asOf)
         let types = (try? await repository.workoutActivityTypes(from: from, through: asOf)) ?? [:]
         let workoutTypeNames = Dictionary(uniqueKeysWithValues: types.map { ($0.key, Self.workoutTypeName($0.value)) })
         let followUps = workouts.compactMap { PostWorkoutFollowUp(workout: $0, otherWorkouts: workouts, journal: journal, asOf: asOf) }
-        return (report, journal, workouts, autonomicToday, workoutTypeNames, followUps)
+        return (report, journal, workouts, autonomicToday, workoutTypeNames, followUps, diagnostics)
     }
 
     /// Chinese display name for a HealthKit workout type. Unknown types
@@ -102,15 +112,40 @@ struct RecoveryDataLoader {
         }
     }
 
-    /// Raw SDNN (ms) and resting heart rate samples for the last 31 days,
-    /// oldest first. Daily aggregates cannot serve the hourly distribution
-    /// or the 30-day baseline the recovery models need.
-    private func rawSamples() async throws -> (sdnn: [TrendPoint], bpm: [TrendPoint]) {
+    /// Raw SDNN (ms) and resting heart rate samples in the calendar-day
+    /// window ending at asOf, oldest first, plus the diagnostics for
+    /// everything the window or the resting filter dropped. Daily
+    /// aggregates cannot serve the hourly distribution or the 30-day
+    /// baseline the recovery models need.
+    ///
+    /// Window: `windowDays` calendar days, from the start of the day
+    /// `windowDays` days before asOf to asOf - never a fixed number of
+    /// seconds, so a daylight-saving transition cannot shift the window
+    /// by an hour. Resting-context filtering happens before the samples
+    /// reach AutonomicRecoveryDay: watch sources only, no workout
+    /// overlap, and no sample ending after asOf. Limit truncation,
+    /// future samples and conflicting duplicate UUIDs are counted in
+    /// the returned diagnostics instead of failing the load.
+    private func rawSamples(asOf: Date, windowDays: Int, workouts: [RatedWorkout]? = nil) async throws
+        -> (sdnn: [TrendPoint], bpm: [TrendPoint], diagnostics: RawSampleDiagnostics) {
         guard let hrv = HealthCatalog.byID["hrv"], let rhr = HealthCatalog.byID["restingHeartRate"] else {
-            return ([], [])
+            return ([], [], .empty)
         }
-        let sdnn = try await repository.samples(hrv, hours: 31 * 24, limit: 2000)
-        let bpm = try await repository.samples(rhr, hours: 31 * 24, limit: 2000)
-        return (sdnn, bpm)
+        let window = SourcedSampleWindow.window(days: windowDays, asOf: asOf, calendar: .current)
+        let filterWorkouts: [RatedWorkout]
+        if let workouts {
+            filterWorkouts = workouts
+        } else {
+            filterWorkouts = try await repository.workouts(from: window.from, through: asOf)
+        }
+        let workoutIntervals = filterWorkouts.map { DateInterval(start: $0.start, end: $0.end) }
+        let (sdnnSourced, sdnnTruncated) = try await repository.sourcedSamples(
+            hrv, from: window.from, through: window.through, limit: 2000)
+        let (bpmSourced, bpmTruncated) = try await repository.sourcedSamples(
+            rhr, from: window.from, through: window.through, limit: 2000)
+        let sdnn = selectRestingSamples(sdnnSourced, workouts: workoutIntervals, asOf: asOf, truncated: sdnnTruncated)
+        let bpm = selectRestingSamples(bpmSourced, workouts: workoutIntervals, asOf: asOf, truncated: bpmTruncated)
+        return (sdnn.samples.map(\.trendPoint), bpm.samples.map(\.trendPoint),
+                sdnn.diagnostics.merging(bpm.diagnostics))
     }
 }
