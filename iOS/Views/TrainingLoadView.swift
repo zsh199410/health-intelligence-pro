@@ -59,18 +59,96 @@ struct TrainingLoadView: View {
                         }
                         .frame(height: 120)
                         .chartXAxis { AxisMarks(values: .stride(by: .day)) { AxisValueLabel(format: .dateTime.day()) } }
-                        if let total = report.totalTrainingLoad {
-                            Text("本周累计负荷 \(Int(total))（7 天均有记录）")
-                                .font(.subheadline.weight(.semibold))
-                        } else {
-                            Text("有 \(report.days.filter { $0.trainingLoad == nil }.count) 天负荷未知，无法汇总本周累计。")
-                                .font(.subheadline).foregroundStyle(HealthTheme.muted)
-                        }
-                        Text("负荷未知（无记录或未评分）的日子在图中留空，不按 0 算。")
-                            .font(.footnote).foregroundStyle(HealthTheme.muted)
                     }
+                    ForEach(report.days.reversed(), id: \.date) { day in
+                        trainingLoadDayRow(day, report: report)
+                        if day.date != report.days.first?.date { Divider() }
+                    }
+                    trainingLoadTotals(report)
+                    Text("未核实、未评分或记录冲突的日子负荷未知，在图中留空，不按 0 算；只有你确认当天未运动的日子才计 0。")
+                        .font(.footnote).foregroundStyle(HealthTheme.muted)
                 }
             }
+        }
+    }
+
+    private func trainingLoadDayRow(_ day: RecoveryLoadReport.Day, report: RecoveryLoadReport) -> some View {
+        let verified = health.recoveryInputs.isActivityVerified(on: day.date)
+        let hasWorkout = day.latestWorkoutEnd != nil
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(day.date.formatted(dayStyle))
+                Spacer()
+                Text(trainingDayText(day, report: report))
+            }
+            .font(.subheadline)
+            HStack(spacing: 8) {
+                Text(verified ? "已核实" : "未核实")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(verified ? HealthTheme.ink : HealthTheme.muted)
+                    .accessibilityLabel(verified ? "训练负荷已核实" : "训练负荷未核实")
+                Spacer()
+                if verified {
+                    Button("取消核实") {
+                        health.recoveryInputs.unverifyActivity(on: day.date)
+                        Task { await health.loadRecovery() }
+                    }
+                    .font(.caption)
+                    .accessibilityLabel("取消核实\(day.date.formatted(dayStyle))的训练负荷")
+                } else if hasWorkout {
+                    Button("确认数据完整") {
+                        health.recoveryInputs.verifyActivity(on: day.date)
+                        Task { await health.loadRecovery() }
+                    }
+                    .font(.caption)
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("确认\(day.date.formatted(dayStyle))的训练数据完整")
+                } else {
+                    Button("确认当天未运动") {
+                        health.recoveryInputs.verifyActivity(on: day.date)
+                        Task { await health.loadRecovery() }
+                    }
+                    .font(.caption)
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("确认\(day.date.formatted(dayStyle))当天未运动")
+                }
+            }
+        }
+    }
+
+    private func trainingDayText(_ day: RecoveryLoadReport.Day, report: RecoveryLoadReport) -> String {
+        if let load = day.trainingLoad {
+            return load == 0 ? "已确认休息日，负荷 0" : "负荷 \(Int(load))"
+        }
+        if health.recoveryInputs.isActivityVerified(on: day.date) {
+            if hasUnratedWorkout(on: day.date, report: report) {
+                return "已核实，有训练未评分，负荷未知"
+            }
+            return "已核实，负荷未知"
+        }
+        return day.latestWorkoutEnd == nil ? "无训练记录，未核实" : "有训练，未核实"
+    }
+
+    private func hasUnratedWorkout(on date: Date, report: RecoveryLoadReport) -> Bool {
+        let start = report.calendar.startOfDay(for: date)
+        return health.recoveryWorkouts.contains { workout in
+            report.calendar.startOfDay(for: workout.end) == start && workout.exertion == nil
+        }
+    }
+
+    @ViewBuilder private func trainingLoadTotals(_ report: RecoveryLoadReport) -> some View {
+        let loads = report.days.compactMap(\.trainingLoad)
+        if let total = report.totalTrainingLoad {
+            Text("本周累计负荷 \(Int(total))（7 天均已核实）")
+                .font(.subheadline.weight(.semibold))
+        } else if !loads.isEmpty {
+            Text("局部总和（\(loads.count)/7 天有值）：\(Int(loads.reduce(0, +)))")
+                .font(.subheadline.weight(.semibold))
+            Text("有 \(report.days.filter { $0.trainingLoad == nil }.count) 天负荷未知，无法汇总本周完整总和。")
+                .font(.subheadline).foregroundStyle(HealthTheme.muted)
+        } else {
+            Text("有 \(report.days.filter { $0.trainingLoad == nil }.count) 天负荷未知，无法汇总本周累计。")
+                .font(.subheadline).foregroundStyle(HealthTheme.muted)
         }
     }
 
