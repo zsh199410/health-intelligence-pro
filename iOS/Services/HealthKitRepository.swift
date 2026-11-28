@@ -14,7 +14,7 @@ final class HealthKitRepository {
         read.insert(HKObjectType.categoryType(forIdentifier: .sleepAnalysis)!)
         read.insert(HKObjectType.electrocardiogramType())
         for identifier in [HKCategoryTypeIdentifier.highHeartRateEvent,
-                           .lowHeartRateEvent, .irregularHeartRhythmEvent] {
+                    .lowHeartRateEvent, .irregularHeartRhythmEvent] {
             if let type = HKObjectType.categoryType(forIdentifier: identifier) { read.insert(type) }
         }
         // Launch requests read-only access. Write permissions are requested
@@ -73,7 +73,7 @@ final class HealthKitRepository {
         // before sorting and limiting so a later overlapping sample cannot
         // displace the last record from the sleep session.
         let predicate = HKQuery.predicateForSamples(withStart: window.lowerBound, end: window.upperBound,
-                                                    options: .strictEndDate)
+                                      options: .strictEndDate)
         let samples = try await sampleQuery(type: metric.quantityType, predicate: predicate, limit: 1)
         guard let sample = samples.first as? HKQuantitySample else { return nil }
         let value = sample.quantity.doubleValue(for: metric.unit) * metric.multiplier
@@ -92,10 +92,10 @@ final class HealthKitRepository {
         let option: HKStatisticsOptions = metric.aggregation == .sumToday ? .cumulativeSum : .discreteAverage
         return try await withCheckedThrowingContinuation { continuation in
             let query = HKStatisticsCollectionQuery(quantityType: metric.quantityType,
-                                                     quantitySamplePredicate: predicate,
-                                                     options: option,
-                                                     anchorDate: anchor,
-                                                     intervalComponents: DateComponents(day: 1))
+                                          quantitySamplePredicate: predicate,
+                                          options: option,
+                                          anchorDate: anchor,
+                                          intervalComponents: DateComponents(day: 1))
             query.initialResultsHandler = { _, collection, error in
                 if let error { continuation.resume(throwing: error); return }
                 guard let collection else { continuation.resume(returning: []); return }
@@ -113,25 +113,46 @@ final class HealthKitRepository {
         }
     }
 
-    /// Raw samples of a metric over the last `hours` hours, oldest first.
-    /// Used by the stress page, which needs within-day (hourly) samples;
-    /// `trend` aggregates per day and cannot serve that. Values use the
-    /// metric unit and multiplier, non-finite values are dropped. Only
-    /// the newest `limit` samples are read; the result is re-sorted
-    /// ascending because `sampleQuery` returns newest first.
-    func samples(_ metric: HealthMetric, hours: Int, limit: Int = 500) async throws -> [TrendPoint] {
-        guard let start = Calendar.current.date(byAdding: .hour, value: -max(1, hours), to: Date()) else { return [] }
-        let predicate = HKQuery.predicateForSamples(withStart: start, end: Date())
-        let raw = try await sampleQuery(type: metric.quantityType, predicate: predicate, limit: limit)
-        var result: [TrendPoint] = []
-        for case let sample as HKQuantitySample in raw {
+    /// Raw sourced samples of a metric in `from...through`, oldest first.
+    /// One shared implementation backs both `sourcedSamples` and `samples`:
+    /// the caller fixes the window, this function never reads the clock.
+    /// Values use the metric unit and multiplier, non-finite values are
+    /// dropped. Only the newest `limit` samples are kept; `truncated`
+    /// reports whether more samples exist in the window than `limit`.
+    /// The result is re-sorted ascending because `sampleQuery` returns
+    /// newest first.
+    func sourcedSamples(_ metric: HealthMetric, from: Date, through: Date,
+                        limit: Int = 500) async throws -> (samples: [SourcedSample], truncated: Bool) {
+        let capped = limit == HKObjectQueryNoLimit ? HKObjectQueryNoLimit : max(1, limit)
+        let fetchLimit = capped == HKObjectQueryNoLimit ? capped : capped + 1
+        let predicate = HKQuery.predicateForSamples(withStart: from, end: through)
+        let raw = try await sampleQuery(type: metric.quantityType, predicate: predicate, limit: fetchLimit)
+        let truncated = capped != HKObjectQueryNoLimit && raw.count > capped
+        let kept = capped == HKObjectQueryNoLimit ? raw : Array(raw.prefix(capped))
+        var result: [SourcedSample] = []
+        for case let sample as HKQuantitySample in kept {
             let value = sample.quantity.doubleValue(for: metric.unit) * metric.multiplier
             guard value.isFinite else { continue }
-            result.append(TrendPoint(recordedAt: sample.endDate, value: value))
+            let revision = sample.sourceRevision
+            result.append(SourcedSample(value: value, start: sample.startDate, end: sample.endDate,
+                                        uuid: sample.uuid, sourceName: revision.source.name,
+                                        sourceBundleID: revision.source.bundleIdentifier,
+                                        deviceName: sample.device?.name,
+                                        deviceManufacturer: sample.device?.manufacturer,
+                                        deviceModel: sample.device?.model))
         }
-        return result.sorted { $0.recordedAt < $1.recordedAt }
+        return (result.sorted { $0.end < $1.end }, truncated)
     }
 
+    /// Raw samples of a metric in `from...through`, oldest first, as
+    /// TrendPoints. Used by the stress page, which needs within-day
+    /// (hourly) samples; `trend` aggregates per day and cannot serve that.
+    /// Shares the `sourcedSamples` implementation; the caller fixes the
+    /// window, this function never reads the clock.
+    func samples(_ metric: HealthMetric, from: Date, through: Date, limit: Int = 500) async throws -> [TrendPoint] {
+        let (sourced, _) = try await sourcedSamples(metric, from: from, through: through, limit: limit)
+        return sourced.map(\.trendPoint)
+    }
 
     /// Workouts in the window as RatedWorkout with exertion nil: session RPE
     /// is a real user rating (0-10) and is applied by the caller from the
