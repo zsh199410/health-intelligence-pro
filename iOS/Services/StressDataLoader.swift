@@ -8,6 +8,9 @@ import HealthCore
 /// success. Step count and activity energy are summed per hour, nil when
 /// the hour has no samples of that metric (unknown, not zero); heart
 /// rate, HRV and respiratory rate take the hourly median.
+/// Resting heart rate is a day-level value and never enters hourly
+/// sampling: it is not copied into hourly buckets here; the caller passes
+/// it separately to `StressCalculator` for day-level baseline comparison only.
 @MainActor
 final class StressDataLoader: ObservableObject {
     static let metricIDs = ["heartRate", "hrv", "respiratoryRate", "stepCount", "activeEnergy"]
@@ -48,11 +51,12 @@ final class StressDataLoader: ObservableObject {
     }
 
     /// Natural-hour buckets with at least one sample, oldest first.
-    /// Resting heart rate is the latest daily value, supplied by the
-    /// caller from `HealthViewModel.readings` so it is not read twice.
+    /// Resting heart rate is a day-level value and is never copied into
+    /// hourly samples (P0-3): the caller passes the day's resting heart
+    /// rate separately to `StressCalculator`, for baseline comparison only.
     /// Hours with no sample at all are omitted here; the view renders
     /// them as gaps from the 24-hour window, never as zeros.
-    func hourlyInputs(restingHeartRate: Double?) -> [StressHourInput] {
+    func hourlyInputs() -> [StressHourInput] {
         let calendar = Calendar.current
         var hours: [Date: [String: [Double]]] = [:]
         for (id, points) in samples {
@@ -70,7 +74,6 @@ final class StressDataLoader: ObservableObject {
             return StressHourInput(
                 hourStart: hourStart,
                 hrvMedian: median(bucket["hrv"] ?? []),
-                restingHeartRate: restingHeartRate,
                 heartRateMedian: median(bucket["heartRate"] ?? []),
                 respiratoryRateMedian: median(bucket["respiratoryRate"] ?? []),
                 steps: bucket["stepCount"].map { $0.reduce(0, +) },
