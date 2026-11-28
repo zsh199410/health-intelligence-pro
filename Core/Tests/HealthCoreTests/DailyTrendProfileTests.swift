@@ -35,11 +35,34 @@ final class DailyTrendProfileTests: XCTestCase {
     func testYesterdayMatchesDurationAcrossDSTOrRejectsImpossibleWindow() {
         var c = Calendar(identifier: .gregorian)
         c.timeZone = TimeZone(identifier: "America/New_York")!
-        let noon = c.date(from: DateComponents(year: 2025, month: 3, day: 10, hour: 12))!
-        let yesterday = DailyTrendProfile.previousCutoff(end: noon, calendar: c)!
-        XCTAssertEqual(yesterday.timeIntervalSince(c.startOfDay(for: yesterday)), 12 * 3600)
-        let late = c.date(byAdding: .hour, value: 11, to: noon)!
-        XCTAssertNil(DailyTrendProfile.previousCutoff(end: late, calendar: c))
-        XCTAssertNil(DailyTrendProfile.previousCutoff(end: c.startOfDay(for: noon), calendar: c))
+        let expected = c.date(from: DateComponents(year: 2023, month: 3, day: 11, hour: 12))!
+        XCTAssertEqual(DailyTrendProfile.yesterday(from: c.date(from: DateComponents(year: 2023, month: 3, day: 12, hour: 12))!, calendar: c), expected)
+        var broken = Calendar(identifier: .gregorian)
+        broken.timeZone = TimeZone(identifier: "America/New_York")!
+        broken.firstWeekday = 1
+        XCTAssertNil(DailyTrendProfile.yesterday(from: expected, calendar: broken))
+    }
+
+    func testFutureSamplesAreExcludedFromRunsAndTodayValue() {
+        let end = Date(timeIntervalSince1970: 100 * 86_400 + 3600)
+        func point(_ day: Int, _ value: Double) -> TrendPoint {
+            TrendPoint(recordedAt: utc.date(byAdding: .day, value: day, to: utc.startOfDay(for: end))!, value: value)
+        }
+        // +1 天是未来样本：不得进入分段，也不得成为当日值。
+        let profile = DailyTrendProfile(points: [point(-1, 10), point(0, 20), point(1, 999)], end: end, calendar: utc)
+        XCTAssertEqual(profile.todayValue, 20)
+        XCTAssertEqual(profile.runs(days: 7).map(\.count), [2])
+        XCTAssertEqual(profile.runs(days: 7).flatMap { $0 }.map(\.value), [10, 20])
+    }
+
+    func testFutureOnlySamplesYieldNoRunsAndNoTodayValue() {
+        let end = Date(timeIntervalSince1970: 100 * 86_400 + 3600)
+        func point(_ day: Int, _ value: Double) -> TrendPoint {
+            TrendPoint(recordedAt: utc.date(byAdding: .day, value: day, to: utc.startOfDay(for: end))!, value: value)
+        }
+        let profile = DailyTrendProfile(points: [point(1, 999), point(2, 888)], end: end, calendar: utc)
+        XCTAssertNil(profile.todayValue)
+        XCTAssertTrue(profile.runs(days: 7).isEmpty)
+        XCTAssertTrue(profile.runs(days: 90).isEmpty)
     }
 }
