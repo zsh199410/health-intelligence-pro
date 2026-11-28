@@ -12,7 +12,7 @@ final class SourcedSampleTests: XCTestCase {
         return calendar
     }()
 
-    private func date(_ day: Int, hour: Int, minute: Int = 0) -> Date {
+    private func date(_ day: Int, _ hour: Int, minute: Int = 0) -> Date {
         utc.date(from: DateComponents(year: 2026, month: 11, day: day, hour: hour, minute: minute))!
     }
 
@@ -138,7 +138,7 @@ final class SourcedSampleBoundaryTests: XCTestCase {
         return calendar
     }()
 
-    private func date(_ day: Int, hour: Int, minute: Int = 0) -> Date {
+    private func date(_ day: Int, _ hour: Int, minute: Int = 0) -> Date {
         utc.date(from: DateComponents(year: 2026, month: 11, day: day, hour: hour, minute: minute))!
     }
 
