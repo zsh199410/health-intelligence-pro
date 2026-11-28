@@ -98,7 +98,7 @@ struct SleepView: View {
 
     @ViewBuilder private var sleepGoalSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionHeadline(title: "睡眠目标与短缺", subtitle: "目标是你自己定的；短缺只按已同步记录算")
+            SectionHeadline(title: "睡眠目标与短缺", subtitle: "目标是你自己定的；短缺只按你已核实的日子算")
             HealthCard {
                 VStack(alignment: .leading, spacing: 9) {
                     if hasSleepTarget {
@@ -116,26 +116,66 @@ struct SleepView: View {
                     }
                     if let report = health.recoveryReport {
                         ForEach(report.days.reversed(), id: \.date) { day in
-                            HStack {
-                                Text(day.date.formatted(dayStyle))
-                                Spacer()
-                                Text(dayText(day))
-                            }
-                            .font(.subheadline)
+                            sleepGoalDayRow(day)
                             if day.date != report.days.first?.date { Divider() }
                         }
-                        if let total = report.totalShortfallMinutes {
-                            Text("近 7 天累计短缺 \(hoursText(Double(total)))")
-                                .font(.subheadline.weight(.semibold))
-                        } else {
-                            Text("有 \(report.days.filter { $0.sleepMinutes == nil }.count) 天无睡眠记录，无法汇总累计短缺。")
-                                .font(.subheadline).foregroundStyle(HealthTheme.muted)
-                        }
+                        sleepShortfallTotals(report)
                     }
-                    Text("短缺 = 目标 − 实际睡眠；睡够目标不记负数；无记录的日子不算。")
+                    Text("短缺 = 目标 − 实际睡眠；睡够目标不记负数；未核实的日子不计入短缺。")
                         .font(.footnote).foregroundStyle(HealthTheme.muted)
                 }
             }
+        }
+    }
+
+    private func sleepGoalDayRow(_ day: RecoveryLoadReport.Day) -> some View {
+        let verified = health.recoveryInputs.isSleepVerified(on: day.date)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(day.date.formatted(dayStyle))
+                Spacer()
+                Text(dayText(day))
+            }
+            .font(.subheadline)
+            HStack(spacing: 8) {
+                Text(verified ? "已核实" : "未核实")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(verified ? HealthTheme.ink : HealthTheme.muted)
+                    .accessibilityLabel(verified ? "睡眠数据已核实" : "睡眠数据未核实")
+                Spacer()
+                if verified {
+                    Button("取消核实") {
+                        health.recoveryInputs.unverifySleep(on: day.date)
+                        Task { await health.loadRecovery() }
+                    }
+                    .font(.caption)
+                    .accessibilityLabel("取消核实\(day.date.formatted(dayStyle))的睡眠数据")
+                } else if day.latestSleepSampleEnd != nil {
+                    Button("确认数据完整") {
+                        health.recoveryInputs.verifySleep(on: day.date)
+                        Task { await health.loadRecovery() }
+                    }
+                    .font(.caption)
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("确认\(day.date.formatted(dayStyle))的睡眠数据完整")
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private func sleepShortfallTotals(_ report: RecoveryLoadReport) -> some View {
+        let shortfalls = report.days.compactMap(\.shortfallMinutes)
+        if let total = report.totalShortfallMinutes {
+            Text("近 7 天累计短缺 \(hoursText(Double(total)))")
+                .font(.subheadline.weight(.semibold))
+        } else if !shortfalls.isEmpty {
+            Text("局部总和（\(shortfalls.count)/7 天有值）：\(hoursText(shortfalls.reduce(0, +)))")
+                .font(.subheadline.weight(.semibold))
+            Text("有 \(report.days.filter { $0.shortfallMinutes == nil }.count) 天短缺未知，无法汇总完整总和。")
+                .font(.subheadline).foregroundStyle(HealthTheme.muted)
+        } else {
+            Text("有 \(report.days.filter { $0.shortfallMinutes == nil }.count) 天短缺未知，无法汇总累计短缺。")
+                .font(.subheadline).foregroundStyle(HealthTheme.muted)
         }
     }
 
@@ -153,9 +193,12 @@ struct SleepView: View {
     }
 
     private func dayText(_ day: RecoveryLoadReport.Day) -> String {
-        guard let minutes = day.sleepMinutes else { return "无记录" }
+        guard let minutes = day.sleepMinutes else {
+            return day.latestSleepSampleEnd == nil ? "无记录" : "有记录，未核实"
+        }
         let slept = hoursText(Double(minutes))
-        if let shortfall = day.shortfallMinutes, shortfall > 0 {
+        guard let shortfall = day.shortfallMinutes else { return "睡了 \(slept)" }
+        if shortfall > 0 {
             return "睡了 \(slept)，短缺 \(shortfall) 分钟"
         }
         return "睡了 \(slept)，已达标"
