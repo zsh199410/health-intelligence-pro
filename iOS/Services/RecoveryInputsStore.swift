@@ -4,7 +4,7 @@ import HealthCore
 
 /// User-entered recovery inputs, stored locally only (never written to
 /// HealthKit, never uploaded): personal sleep target, daily energy and
-/// fatigue ratings (0–10), and per-workout session-RPE ratings (0–10).
+/// fatigue ratings (0-10), and per-workout session-RPE ratings (0-10).
 /// Ratings are the user's own reports. Nothing is imputed from HRV,
 /// heart rate, or any physiological signal.
 @MainActor
@@ -41,7 +41,7 @@ final class RecoveryInputsStore: ObservableObject {
 
     var sleepTargetMinutes: Double? { saved.sleepTargetMinutes }
 
-    /// Sleep target in minutes, 4–12 hours. Nil means the user has not
+    /// Sleep target in minutes, 4-12 hours. Nil means the user has not
     /// set a target; shortfall is not computed until one is set.
     func setSleepTarget(minutes: Double?) {
         if let minutes {
