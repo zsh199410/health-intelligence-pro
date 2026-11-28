@@ -52,8 +52,8 @@ struct RecoveryDataLoader {
         let sleepDays = Set(reportDays.filter { inputs.isSleepVerified(on: $0) })
         let workoutDays = Set(reportDays.filter { inputs.isActivityVerified(on: $0) })
         let report = RecoveryLoadReport(period: period, asOf: asOf, targetMinutes: inputs.sleepTargetMinutes,
-                                         sleep: intervals, confirmedSleepDays: sleepDays,
-                                         workouts: workouts, confirmedWorkoutDays: workoutDays)
+                                        sleep: intervals, confirmedSleepDays: sleepDays,
+                                        workouts: workouts, confirmedWorkoutDays: workoutDays)
         var snapshots: [AutonomicRecoveryDay] = []
         for day in report.days {
             let endOfDay = calendar.date(bySettingHour: 23, minute: 59, second: 59, of: day.date) ?? day.date
